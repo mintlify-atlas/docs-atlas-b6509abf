@@ -1,0 +1,134 @@
+---
+title: 'Unblock User'
+description: 'Unblock a user and reset their failure count'
+---
+
+## POST /api/admin/desbloquear
+
+Unblocks a user by changing their access status to "activo" and deleting all their failure records. This resets their failure count to 0.
+
+### Request Body
+
+<ParamField body="id_institucional" type="string" required>
+  The institutional ID of the user to unblock
+</ParamField>
+
+### Request Example
+
+```json
+{
+  "id_institucional": "123456789"
+}
+```
+
+### Response
+
+**Success (200 OK)**
+
+```json
+{
+  "success": true,
+  "message": "Usuario desbloqueado exitosamente"
+}
+```
+
+**Error Response (500 Internal Server Error)**
+
+```json
+{
+  "success": false,
+  "error": "Error message from database"
+}
+```
+
+<Warning>
+  This endpoint can also be used to **block** a user by passing a different `nuevoAcceso` parameter in the implementation. However, the standard admin interface only uses it for unblocking.
+</Warning>
+
+### What Happens When Unblocking
+
+The unblock operation performs two critical steps:
+
+1. **Update Access Status**
+   ```javascript
+   UPDATE usuarios 
+   SET acceso = 'activo' 
+   WHERE id_institucional = ?
+   ```
+
+2. **Delete All Failure Records**
+   ```javascript
+   DELETE FROM fallas 
+   WHERE id_institucional = ?
+   ```
+
+3. **Automatic Counter Reset**
+   - A database trigger (`fn_actualizar_fallas`) automatically recalculates `total_fallas`
+   - Since all failures were deleted, `total_fallas` becomes 0
+
+<Note>
+  The failure deletion is intentional and serves as a "clean slate" for the user. Their failure history is permanently removed, not just archived.
+</Note>
+
+### Implementation Details
+
+**Source:** `src/modules/admin/infrastructure/repositories/AdminRepositoryImpl.js:173`
+
+The `toggleAcceso` method handles both blocking and unblocking:
+
+```javascript
+async toggleAcceso(id_institucional, nuevoAcceso) {
+  // Update access status
+  const { error } = await supabase
+    .from('usuarios')
+    .update({ acceso: nuevoAcceso })
+    .eq('id_institucional', id_institucional);
+  if (error) throw new Error(error.message);
+
+  // Delete failures when unblocking
+  if (nuevoAcceso === 'activo') {
+    const { error: errFallas } = await supabase
+      .from('fallas')
+      .delete()
+      .eq('id_institucional', id_institucional);
+    if (errFallas) throw new Error(errFallas.message);
+  }
+}
+```
+
+### Frontend Integration
+
+**Source:** `src/modules/admin/application/hooks/useAdminDashboard.js:77-87`
+
+The admin dashboard hook optimistically updates the UI:
+
+```javascript
+const toggleAcceso = async (id_institucional, nuevoAcceso) => {
+  await repo.toggleAcceso(id_institucional, nuevoAcceso);
+  
+  // Update local state immediately
+  setUsuarios(prev =>
+    prev.map(u =>
+      u.id_institucional === id_institucional
+        ? { ...u, acceso: nuevoAcceso, total_fallas: nuevoAcceso === 'activo' ? 0 : u.total_fallas }
+        : u
+    )
+  );
+  
+  // Refresh statistics
+  repo.getStats().then(s => setStats(s)).catch(() => {});
+};
+```
+
+### Business Rules
+
+- Only administrators can unblock users
+- Unblocking is the only way for a blocked user to regain access
+- All failure history is erased (cannot be recovered)
+- The user can immediately start accumulating new failures after unblocking
+- Unblocking updates the statistics counters (activos ↑, bloqueados ↓)
+
+### Related Endpoints
+
+- [Report Failure](/api/users/report-failure) - How users get blocked
+- [Admin Dashboard](/api/admin/dashboard) - View blocked users list

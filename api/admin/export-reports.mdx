@@ -1,0 +1,287 @@
+---
+title: 'Export Reports'
+description: 'Generate period-based reports with failure analytics'
+---
+
+## GET /api/admin/reportes/:tipo
+
+Generates comprehensive reports for a specified time period, including user counts, failure statistics, and breakdowns by role-specific attributes.
+
+### Path Parameters
+
+<ParamField path="tipo" type="string" required>
+  Report period type
+  
+  Valid values:
+  - `"diario"` - Daily report
+  - `"semanal"` - Weekly report
+  - `"mensual"` - Monthly report
+  - `"semestral"` - Semester report
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="offset" type="integer" default="0">
+  Time offset for historical reports
+  
+  - `0` = current period (default)
+  - `1` = previous period
+  - `2` = two periods ago
+  - etc.
+  
+  **Note:** For `"semestral"` reports, offset is ignored and always returns the active semester.
+</ParamField>
+
+### Examples
+
+```bash
+# Today's report
+GET /api/admin/reportes/diario
+
+# Yesterday's report
+GET /api/admin/reportes/diario?offset=1
+
+# This week's report
+GET /api/admin/reportes/semanal
+
+# Last week's report
+GET /api/admin/reportes/semanal?offset=1
+
+# Current month
+GET /api/admin/reportes/mensual
+
+# Active semester
+GET /api/admin/reportes/semestral
+```
+
+### Response
+
+<ResponseField name="totalEstudiantes" type="integer">
+  Total number of students in the system
+</ResponseField>
+
+<ResponseField name="totalEmpleados" type="integer">
+  Total number of employees in the system
+</ResponseField>
+
+<ResponseField name="totalContratistas" type="integer">
+  Total number of contractors in the system
+</ResponseField>
+
+<ResponseField name="fallasPeriodo" type="integer">
+  Total failures in the specified period
+</ResponseField>
+
+<ResponseField name="fallasEstudiantes" type="integer">
+  Failures by students in this period
+</ResponseField>
+
+<ResponseField name="fallasEmpleados" type="integer">
+  Failures by employees in this period
+</ResponseField>
+
+<ResponseField name="fallasContratistas" type="integer">
+  Failures by contractors in this period
+</ResponseField>
+
+<ResponseField name="fallasPorDia" type="array">
+  Daily breakdown of failures for visualization
+  
+  <Expandable title="Daily failure object">
+    <ResponseField name="dia" type="string">
+      Date label (e.g., "13 mar")
+    </ResponseField>
+    
+    <ResponseField name="total" type="integer">
+      Total failures on this day
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="porPrograma" type="array">
+  Student distribution by academic program
+  
+  <Expandable title="Program object">
+    <ResponseField name="programa" type="string">
+      Program name
+    </ResponseField>
+    
+    <ResponseField name="total" type="integer">
+      Total students in this program
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="porDependencia" type="array">
+  Employee distribution by department
+  
+  <Expandable title="Department object">
+    <ResponseField name="dependencia" type="string">
+      Department name
+    </ResponseField>
+    
+    <ResponseField name="total" type="integer">
+      Total employees in this department
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="fallasPorPrograma" type="array">
+  Failure counts by academic program (students only)
+  
+  <Expandable title="Program failure object">
+    <ResponseField name="programa" type="string">
+      Program name
+    </ResponseField>
+    
+    <ResponseField name="fallas_total" type="integer">
+      Number of failures by students in this program during the period
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="fallasPorDependencia" type="array">
+  Failure counts by department (employees only)
+  
+  <Expandable title="Department failure object">
+    <ResponseField name="dependencia" type="string">
+      Department name
+    </ResponseField>
+    
+    <ResponseField name="fallas_total" type="integer">
+      Number of failures by employees in this department during the period
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="fallasPorEmpresa" type="array">
+  Failure counts by contracting company
+  
+  <Expandable title="Company failure object">
+    <ResponseField name="empresa" type="string">
+      Company name
+    </ResponseField>
+    
+    <ResponseField name="fallas_total" type="integer">
+      Number of failures by contractors from this company during the period
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="rangoEtiqueta" type="string">
+  Human-readable date range for display (e.g., "7 mar 2026 — 13 mar 2026")
+</ResponseField>
+
+### Response Example
+
+**Weekly Report (200 OK)**
+
+```json
+{
+  "totalEstudiantes": 1247,
+  "totalEmpleados": 142,
+  "totalContratistas": 38,
+  "fallasPeriodo": 27,
+  "fallasEstudiantes": 22,
+  "fallasEmpleados": 4,
+  "fallasContratistas": 1,
+  "fallasPorDia": [
+    { "dia": "7 mar", "total": 4 },
+    { "dia": "8 mar", "total": 5 },
+    { "dia": "9 mar", "total": 3 },
+    { "dia": "10 mar", "total": 6 },
+    { "dia": "11 mar", "total": 7 },
+    { "dia": "12 mar", "total": 2 },
+    { "dia": "13 mar", "total": 0 }
+  ],
+  "porPrograma": [
+    { "programa": "Ingeniería de Sistemas", "total": 342 },
+    { "programa": "Administración de Empresas", "total": 289 }
+  ],
+  "porDependencia": [
+    { "dependencia": "TIC", "total": 25 },
+    { "dependencia": "Rectoría", "total": 18 }
+  ],
+  "fallasPorPrograma": [
+    { "programa": "Ingeniería de Sistemas", "fallas_total": 8 },
+    { "programa": "Derecho", "fallas_total": 5 }
+  ],
+  "fallasPorDependencia": [
+    { "dependencia": "TIC", "fallas_total": 2 },
+    { "dependencia": "Biblioteca", "fallas_total": 2 }
+  ],
+  "fallasPorEmpresa": [
+    { "empresa": "Servicios Generales S.A.", "fallas_total": 1 }
+  ],
+  "rangoEtiqueta": "7 mar 2026 — 13 mar 2026"
+}
+```
+
+<Note>
+  The report engine cross-references failure records with role-specific information using the `id_institucional` field, ensuring accurate attribution of failures to programs, departments, and companies.
+</Note>
+
+### Period Calculation Logic
+
+**Source:** `src/modules/admin/infrastructure/repositories/AdminRepositoryImpl.js:273-313`
+
+#### Daily (`"diario"`)
+- **Current (offset=0)**: Today from 00:00:00 to now
+- **Previous (offset=1)**: Yesterday from 00:00:00 to 23:59:59
+- **offset=N**: N days ago, full day
+
+#### Weekly (`"semanal"`)
+- **Current (offset=0)**: Monday of this week to now
+- **Previous (offset=1)**: Previous Monday to Sunday
+- **offset=N**: N weeks ago
+
+#### Monthly (`"mensual"`)
+- **Current (offset=0)**: First day of this month to now
+- **Previous (offset=1)**: Full previous month
+- **offset=N**: N months ago
+
+#### Semester (`"semestral"`)
+- Always returns data for the active semester (from `semestres` table)
+- If no active semester exists, defaults to current half-year (Jan-Jun or Jul-Dec)
+- **offset parameter is ignored**
+
+### Implementation Details
+
+**Source:** `src/modules/admin/infrastructure/repositories/AdminRepositoryImpl.js:272-488`
+
+The report generation process:
+
+1. **Calculate date range** based on period type and offset
+2. **Execute parallel queries** for:
+   - Role counts
+   - Failures in period
+   - Student programs
+   - Employee departments
+   - Contractor companies
+3. **Cross-reference failures** with role-specific info using ID lookups
+4. **Aggregate data** by categories (program, department, company)
+5. **Format date labels** for display in Spanish locale
+
+### Diagnostic Logging
+
+<Warning>
+  In development mode, the endpoint logs detailed diagnostics about the cross-referencing process to help troubleshoot any data mismatches. This is disabled in production.
+</Warning>
+
+```javascript
+if (process.env.NODE_ENV !== 'production') {
+  console.log('[getReporte] diagnóstico cruce fallas ↔ info');
+  console.log('fallas en período:', fallas.length);
+  // ... more debug output
+}
+```
+
+### Frontend Integration
+
+**Source:** `src/modules/admin/application/hooks/useReporte.js`
+
+The `useReporte` hook automatically reloads the report when period or offset changes:
+
+```javascript
+const { reporte, loading, error } = useReporte('semanal', 0);
+```

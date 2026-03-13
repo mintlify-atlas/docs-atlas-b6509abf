@@ -1,0 +1,212 @@
+---
+title: Environment Setup
+description: Set up your development environment for UCC Control de Acceso
+---
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed on your system:
+
+### Required Software
+
+<Steps>
+  <Step title="Node.js & npm">
+    Install Node.js (version 18.x or higher) which includes npm.
+    
+    ```bash
+    # Verify installation
+    node --version
+    npm --version
+    ```
+    
+    Download from: [nodejs.org](https://nodejs.org/)
+  </Step>
+
+  <Step title="Git">
+    Install Git for version control.
+    
+    ```bash
+    # Verify installation
+    git --version
+    ```
+    
+    Download from: [git-scm.com](https://git-scm.com/)
+  </Step>
+
+  <Step title="Code Editor">
+    We recommend **Visual Studio Code** with the following extensions:
+    
+    - ESLint
+    - Prettier - Code formatter
+    - Tailwind CSS IntelliSense
+    - ES7+ React/Redux/React-Native snippets
+  </Step>
+</Steps>
+
+## Clone the Repository
+
+```bash
+git clone <repository-url>
+cd ucc-control-acceso
+```
+
+## Install Dependencies
+
+The project uses the following main dependencies:
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install
+    ```
+  </Tab>
+  <Tab title="yarn">
+    ```bash
+    yarn install
+    ```
+  </Tab>
+  <Tab title="pnpm">
+    ```bash
+    pnpm install
+    ```
+  </Tab>
+</Tabs>
+
+### Core Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|----------|
+| `react` | ^18.2.0 | UI framework |
+| `react-dom` | ^18.2.0 | React DOM rendering |
+| `react-router-dom` | ^6.20.0 | Client-side routing |
+| `@supabase/supabase-js` | ^2.97.0 | Database client |
+| `axios` | ^1.6.2 | HTTP client |
+| `recharts` | ^3.7.0 | Charts and analytics |
+| `xlsx` | ^0.18.5 | Excel export functionality |
+
+### Dev Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|----------|
+| `vite` | ^5.0.8 | Build tool and dev server |
+| `@vitejs/plugin-react` | ^4.2.1 | Vite React plugin |
+| `tailwindcss` | ^3.3.6 | CSS framework |
+| `postcss` | ^8.4.32 | CSS processing |
+| `autoprefixer` | ^10.4.16 | CSS vendor prefixing |
+
+## Environment Variables
+
+Create a `.env` file in the project root:
+
+```bash .env
+# API Backend URL
+VITE_API_URL=http://localhost:3000
+
+# Supabase Configuration (if applicable)
+# VITE_SUPABASE_URL=your_supabase_url
+# VITE_SUPABASE_ANON_KEY=your_supabase_key
+
+# Environment
+# VITE_ENVIRONMENT=development
+```
+
+<Note>
+  All environment variables in Vite must be prefixed with `VITE_` to be exposed to the client-side code.
+</Note>
+
+<Warning>
+  Never commit the `.env` file to version control. Use `.env.example` as a template.
+</Warning>
+
+## Database Setup
+
+The project uses **Supabase** as the backend database.
+
+### Supabase Configuration
+
+<Steps>
+  <Step title="Create Supabase Project">
+    Go to [supabase.com](https://supabase.com) and create a new project.
+  </Step>
+
+  <Step title="Run Database Migrations">
+    The database schema is located in `/database/supabase/`. Execute the SQL files in order:
+    
+    ```bash
+    01_usuarios.sql
+    02_roles.sql
+    03_info_estudiante.sql
+    04_info_empleado.sql
+    05_info_contratista.sql
+    06_triggers_roles.sql
+    07_fallas.sql
+    08_rls_policies.sql
+    09_semestres.sql
+    ```
+  </Step>
+
+  <Step title="Configure RLS Policies">
+    Ensure Row Level Security (RLS) policies are properly configured for data protection.
+  </Step>
+</Steps>
+
+## Verify Installation
+
+Check that everything is set up correctly:
+
+```bash
+# Check Node.js version
+node --version
+# Should output: v18.x.x or higher
+
+# Check npm version
+npm --version
+
+# Verify dependencies are installed
+ls node_modules
+
+# Check if .env file exists
+cat .env
+```
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Node version mismatch">
+    If you encounter issues with Node.js version, use `nvm` (Node Version Manager) to switch versions:
+    
+    ```bash
+    nvm install 18
+    nvm use 18
+    ```
+  </Accordion>
+
+  <Accordion title="Port already in use">
+    If port 3000 is already in use, modify the port in `vite.config.js`:
+    
+    ```javascript
+    server: {
+      port: 3001, // Change to available port
+      open: true
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Dependency installation fails">
+    Try clearing npm cache and reinstalling:
+    
+    ```bash
+    npm cache clean --force
+    rm -rf node_modules package-lock.json
+    npm install
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+Once your environment is set up:
+
+1. [Run the project locally](/development/running-locally)
+2. Review the [architecture documentation](/development/frontend-architecture)
+3. Check the [code standards](/development/code-standards)

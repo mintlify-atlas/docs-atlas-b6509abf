@@ -1,0 +1,322 @@
+---
+title: Admin Panel Overview
+description: Introduction to administrative features and capabilities
+---
+
+# Admin Panel Overview
+
+The UCC Control de Acceso admin panel provides comprehensive tools for managing users, reviewing incidents, and generating reports.
+
+## Who Can Access?
+
+The admin panel is restricted to **authorized UCC employees** with administrative permissions.
+
+<CardGroup cols={3}>
+  <Card title="Directors" icon="user-shield">
+    Full access to all features
+  </Card>
+  <Card title="Supervisors" icon="user-tie">
+    User management and reports
+  </Card>
+  <Card title="Security Staff" icon="user-lock">
+    View-only access
+  </Card>
+</CardGroup>
+
+## Main Features
+
+<Tabs>
+  <Tab title="Dashboard">
+    **Real-time Metrics**:
+    - 🔴 Blocked users count
+    - 🟡 Users at risk (3 failures)
+    - 🟠 Users with 2 failures
+    - 🔵 Users with 1 failure
+    - ⚫ Users with 0 failures
+    - 📊 Daily/weekly/monthly entry trends
+
+    **Quick Actions**:
+    - Search users
+    - View recent failures
+    - Generate reports
+    - Manage semester
+  </Tab>
+
+  <Tab title="User Management">
+    **Search & View**:
+    - Search by ID or name
+    - View complete user profile
+    - See all roles
+    - Review failure history
+
+    **Actions**:
+    - Unblock users
+    - Reset failure counters
+    - View audit trail
+    - Export user data
+  </Tab>
+
+  <Tab title="Reports">
+    **Available Reports**:
+    - Monthly failure summary
+    - Blocked users report
+    - By program/department
+    - Trend analysis
+    - Custom date ranges
+
+    **Export Formats**:
+    - Excel (.xlsx)
+    - CSV
+    - PDF
+  </Tab>
+
+  <Tab title="Semester Management">
+    **Semester Tasks**:
+    - Start new semester
+    - Upload CSV data (students, employees, contractors)
+    - Archive previous semester
+    - Reset all failure counters
+    - Unblock all users
+
+    **Data Migration**:
+    - Export current data
+    - Clean database
+    - Import new semester data
+  </Tab>
+</Tabs>
+
+## Dashboard Layout
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  PANEL ADMINISTRATIVO - UCC Control de Acceso                   │
+├─────────────────────────────────────────────────────────────────┤
+│  🔴 Bloqueados: 12    🟡 En Riesgo: 45    🟠 2 Fallas: 89      │
+│  🔵 1 Falla: 234      ⚫ Sin Fallas: 1,567                  │
+├─────────────────────────────────────────────────────────────────┤
+│  Búsqueda: [______________]  [🔍 BUSCAR]                   │
+├─────────────────────────────────────────────────────────────────┤
+│  FALLAS RECIENTES                                               │
+│  • 80123456 - Juan Pérez - Olvido - 14:30 hoy                 │
+│  • 80234567 - María López - Olvido - 12:15 hoy               │
+│  • 80345678 - Carlos Ruiz - Perdida - 09:00 hoy               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Key Metrics Explained
+
+<AccordionGroup>
+  <Accordion title="🔴 Bloqueados (Blocked Users)">
+    **Definition**: Users with `acceso = 'bloqueado'`
+
+    **Why It Matters**: These users require immediate attention and manual unblocking.
+
+    **SQL Query**:
+    ```sql
+    SELECT COUNT(*) FROM usuarios WHERE acceso = 'bloqueado';
+    ```
+
+    **Action Required**: Review cases, unblock if appropriate.
+  </Accordion>
+
+  <Accordion title="🟡 En Riesgo (At Risk)">
+    **Definition**: Active users with exactly 3 failures
+
+    **Why It Matters**: One more incident will trigger automatic blocking.
+
+    **SQL Query**:
+    ```sql
+    SELECT COUNT(*) FROM usuarios 
+    WHERE total_fallas = 3 AND acceso = 'activo';
+    ```
+
+    **Action Required**: Monitor closely, consider preventive outreach.
+  </Accordion>
+
+  <Accordion title="Failure Distribution">
+    **Purpose**: Understand overall user behavior patterns.
+
+    **Breakdown**:
+    - 0 failures: Responsible users
+    - 1 failure: Occasional forgetfulness
+    - 2 failures: Moderate concern
+    - 3 failures: High risk
+    - 4+ failures: Blocked
+
+    **Use Case**: Identify if widespread issues exist (e.g., semester start).
+  </Accordion>
+</AccordionGroup>
+
+## Access Levels
+
+<Tabs>
+  <Tab title="Director">
+    **Full Administrative Access**
+
+    **Permissions**:
+    - ✅ View all data
+    - ✅ Unblock users
+    - ✅ Reset counters
+    - ✅ Generate all reports
+    - ✅ Manage semesters
+    - ✅ Upload CSV data
+    - ✅ Delete records (with audit)
+    - ✅ Manage admin accounts
+
+    **Use Cases**:
+    - System configuration
+    - Semester transitions
+    - Policy enforcement
+    - Strategic reporting
+  </Tab>
+
+  <Tab title="Supervisor">
+    **Standard Administrative Access**
+
+    **Permissions**:
+    - ✅ View all data
+    - ✅ Unblock users
+    - ✅ Reset counters
+    - ✅ Generate most reports
+    - ❌ Manage semesters
+    - ❌ Upload CSV data
+    - ❌ Delete records
+    - ❌ Manage admin accounts
+
+    **Use Cases**:
+    - Daily user management
+    - Unblock requests
+    - Standard reports
+    - User support
+  </Tab>
+
+  <Tab title="Security Staff">
+    **View-Only Access**
+
+    **Permissions**:
+    - ✅ View user profiles
+    - ✅ Search users
+    - ✅ View failure history
+    - ❌ Unblock users
+    - ❌ Modify data
+    - ❌ Generate reports
+    - ❌ System configuration
+
+    **Use Cases**:
+    - Quick user lookup at entrance
+    - Verify blocking status
+    - Check failure counts
+  </Tab>
+</Tabs>
+
+## Common Admin Tasks
+
+<Steps>
+  <Step title="Unblock a User">
+    1. Search for user by ID or name
+    2. Review failure history
+    3. Click "Desbloquear Usuario"
+    4. Enter justification (mandatory)
+    5. Confirm action
+    6. User immediately unblocked, counter reset to 0
+  </Step>
+
+  <Step title="Generate Monthly Report">
+    1. Navigate to "Reportes"
+    2. Select report type (e.g., "Fallas Mensuales")
+    3. Choose date range
+    4. Select format (Excel/CSV/PDF)
+    5. Click "Generar Reporte"
+    6. Download file
+  </Step>
+
+  <Step title="Search User">
+    1. Enter ID or name in search box
+    2. Click search or press Enter
+    3. View user profile with:
+       - All roles
+       - Failure history
+       - Current status
+       - Complete information
+  </Step>
+
+  <Step title="Start New Semester">
+    1. Export current semester data (backup)
+    2. Navigate to "Gestión de Semestres"
+    3. Click "Nuevo Semestre"
+    4. Confirm archive of current data
+    5. Upload new semester CSV files
+    6. Verify data loaded correctly
+  </Step>
+</Steps>
+
+## Security Features
+
+<CardGroup cols={2}>
+  <Card title="Audit Logging" icon="file-lines">
+    All admin actions are logged:
+    - Who performed action
+    - What was changed
+    - When it occurred
+    - Why (justification)
+  </Card>
+
+  <Card title="Role-Based Access" icon="user-lock">
+    Permissions enforced at:
+    - Database level (RLS)
+    - Application level
+    - UI level
+  </Card>
+
+  <Card title="Mandatory Justification" icon="message">
+    Critical actions require:
+    - Written explanation
+    - Minimum character count
+    - Cannot be skipped
+  </Card>
+
+  <Card title="Session Management" icon="clock">
+    Admin sessions:
+    - Auto-logout after inactivity
+    - Secure token-based auth
+    - IP logging
+  </Card>
+</CardGroup>
+
+## Quick Reference
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `Ctrl + K` | Quick search |
+| `Ctrl + R` | Refresh dashboard |
+| `Ctrl + E` | Export current view |
+| `Esc` | Close modal |
+
+### Status Colors
+
+| Color | Meaning | Example |
+|-------|---------|-------|
+| 🔴 Red | Blocked / Critical | Blocked users |
+| 🟡 Yellow | Warning / At Risk | 3 failures |
+| 🟢 Green | Good / Active | 0 failures |
+| 🔵 Blue | Info / Moderate | 1-2 failures |
+| ⚫ Gray | Neutral / Inactive | Archived data |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Dashboard Features" icon="chart-line" href="/admin/dashboard">
+    Explore dashboard metrics
+  </Card>
+  <Card title="User Management" icon="users-gear" href="/admin/user-management">
+    Learn user management
+  </Card>
+  <Card title="Generate Reports" icon="file-excel" href="/admin/reports">
+    Create Excel reports
+  </Card>
+  <Card title="Semester Management" icon="calendar" href="/admin/semester-management">
+    Handle semester transitions
+  </Card>
+</CardGroup>

@@ -1,0 +1,538 @@
+---
+title: Testing Guide
+description: Testing strategies and guidelines for UCC Control de Acceso
+---
+
+## Testing Overview
+
+This guide covers testing strategies for the UCC Control de Acceso application. While the project currently doesn't have a comprehensive test suite, this document outlines best practices for implementing tests.
+
+<Note>
+  Testing infrastructure is planned for future implementation. This guide serves as a reference for when tests are added.
+</Note>
+
+## Testing Strategy
+
+The application should follow a comprehensive testing approach:
+
+```
+┌─────────────────────────────────────┐
+│     End-to-End Tests (E2E)         │  ← Test complete user flows
+├─────────────────────────────────────┤
+│     Integration Tests              │  ← Test module interactions
+├─────────────────────────────────────┤
+│     Unit Tests                     │  ← Test individual functions
+└─────────────────────────────────────┘
+```
+
+## Recommended Testing Stack
+
+### Unit & Integration Testing
+
+<Tabs>
+  <Tab title="Vitest (Recommended)">
+    ```bash
+    npm install -D vitest @testing-library/react @testing-library/jest-dom
+    ```
+    
+    **Why Vitest?**
+    - Native Vite integration
+    - Fast execution
+    - Jest-compatible API
+    - Built-in ESM support
+  </Tab>
+  
+  <Tab title="Jest">
+    ```bash
+    npm install -D jest @testing-library/react @testing-library/jest-dom
+    npm install -D @babel/preset-react @babel/preset-env
+    ```
+    
+    **Configuration needed** for ES modules and JSX.
+  </Tab>
+</Tabs>
+
+### E2E Testing
+
+```bash
+npm install -D @playwright/test
+# or
+npm install -D cypress
+```
+
+## Unit Testing
+
+### Testing Entities
+
+Test domain entities for business logic:
+
+```javascript src/modules/login/domain/entities/User.test.js
+import { describe, it, expect } from 'vitest';
+import { User } from './User';
+
+describe('User Entity', () => {
+  it('should create a user with correct properties', () => {
+    const user = new User({
+      id: 1,
+      idInstitucional: '80123456',
+      nombreCompleto: 'Juan Pérez',
+      acceso: 'activo',
+      totalFallas: 0,
+      roles: ['estudiante']
+    });
+
+    expect(user.idInstitucional).toBe('80123456');
+    expect(user.isBlocked()).toBe(false);
+  });
+
+  it('should identify blocked users', () => {
+    const user = new User({
+      id: 1,
+      idInstitucional: '80123456',
+      nombreCompleto: 'Juan Pérez',
+      acceso: 'bloqueado',
+      totalFallas: 4,
+      roles: ['estudiante']
+    });
+
+    expect(user.isBlocked()).toBe(true);
+  });
+
+  it('should identify users at risk', () => {
+    const user = new User({
+      id: 1,
+      idInstitucional: '80123456',
+      nombreCompleto: 'Juan Pérez',
+      acceso: 'activo',
+      totalFallas: 3,
+      roles: ['estudiante']
+    });
+
+    expect(user.isAtRisk()).toBe(true);
+    expect(user.getRemainingAttempts()).toBe(1);
+  });
+});
+```
+
+### Testing Use Cases
+
+```javascript src/modules/login/domain/usecases/ValidateInstitutionalIdUseCase.test.js
+import { describe, it, expect, vi } from 'vitest';
+import { ValidateInstitutionalIdUseCase } from './ValidateInstitutionalIdUseCase';
+
+describe('ValidateInstitutionalIdUseCase', () => {
+  it('should validate correct institutional ID', async () => {
+    const mockRepo = {
+      validateInstitutionalId: vi.fn().mockResolvedValue({
+        id: 1,
+        idInstitucional: '80123456',
+        nombreCompleto: 'Juan Pérez',
+        acceso: 'activo',
+        totalFallas: 0,
+        isBlocked: () => false
+      })
+    };
+
+    const useCase = new ValidateInstitutionalIdUseCase(mockRepo);
+    const result = await useCase.execute('80123456');
+
+    expect(result.success).toBe(true);
+    expect(result.user).toBeDefined();
+  });
+
+  it('should reject invalid format', async () => {
+    const mockRepo = { validateInstitutionalId: vi.fn() };
+    const useCase = new ValidateInstitutionalIdUseCase(mockRepo);
+    
+    const result = await useCase.execute('abc123');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('números');
+  });
+
+  it('should reject blocked users', async () => {
+    const mockRepo = {
+      validateInstitutionalId: vi.fn().mockResolvedValue({
+        id: 1,
+        idInstitucional: '80123456',
+        acceso: 'bloqueado',
+        isBlocked: () => true
+      })
+    };
+
+    const useCase = new ValidateInstitutionalIdUseCase(mockRepo);
+    const result = await useCase.execute('80123456');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('bloqueado');
+  });
+});
+```
+
+### Testing React Components
+
+```javascript src/modules/login/presentation/components/LoginForm.test.jsx
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { LoginForm } from './LoginForm';
+
+describe('LoginForm Component', () => {
+  it('should render login form', () => {
+    render(<LoginForm onSubmit={vi.fn()} />);
+    
+    expect(screen.getByLabelText(/ID Institucional/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /ingresar/i })).toBeInTheDocument();
+  });
+
+  it('should call onSubmit with institutional ID', async () => {
+    const mockSubmit = vi.fn();
+    render(<LoginForm onSubmit={mockSubmit} />);
+    
+    const input = screen.getByLabelText(/ID Institucional/i);
+    const button = screen.getByRole('button', { name: /ingresar/i });
+
+    fireEvent.change(input, { target: { value: '80123456' } });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(mockSubmit).toHaveBeenCalledWith('80123456');
+    });
+  });
+
+  it('should show validation error for empty input', async () => {
+    render(<LoginForm onSubmit={vi.fn()} />);
+    
+    const button = screen.getByRole('button', { name: /ingresar/i });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByText(/requerido/i)).toBeInTheDocument();
+    });
+  });
+});
+```
+
+### Testing Custom Hooks
+
+```javascript src/modules/login/application/hooks/useLogin.test.js
+import { describe, it, expect } from 'vitest';
+import { renderHook, waitFor } from '@testing-library/react';
+import { useLogin } from './useLogin';
+
+describe('useLogin Hook', () => {
+  it('should initialize with loading false', () => {
+    const { result } = renderHook(() => useLogin());
+    
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('should handle successful login', async () => {
+    const { result } = renderHook(() => useLogin());
+    
+    result.current.login('80123456');
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+  });
+});
+```
+
+## Integration Testing
+
+### Testing Repository Implementations
+
+```javascript src/modules/login/infrastructure/repositories/AuthRepositoryImpl.test.js
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { AuthRepositoryImpl } from './AuthRepositoryImpl';
+
+// Mock Supabase client
+vi.mock('@/shared/lib/supabaseClient', () => ({
+  supabase: {
+    from: vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          single: vi.fn()
+        }))
+      }))
+    }))
+  }
+}));
+
+describe('AuthRepositoryImpl', () => {
+  let repository;
+
+  beforeEach(() => {
+    repository = new AuthRepositoryImpl();
+  });
+
+  it('should fetch user by institutional ID', async () => {
+    // Test implementation
+  });
+});
+```
+
+## E2E Testing
+
+### Playwright Tests
+
+```javascript tests/e2e/login-flow.spec.js
+import { test, expect } from '@playwright/test';
+
+test.describe('Login Flow', () => {
+  test('should login successfully with valid ID', async ({ page }) => {
+    await page.goto('http://localhost:3000/login');
+
+    // Enter institutional ID
+    await page.fill('input[name="idInstitucional"]', '80123456');
+    await page.click('button[type="submit"]');
+
+    // Should navigate to user profile
+    await expect(page).toHaveURL(/\/user-profile/);
+    await expect(page.locator('h1')).toContainText('Juan Pérez');
+  });
+
+  test('should show error for invalid ID', async ({ page }) => {
+    await page.goto('http://localhost:3000/login');
+
+    await page.fill('input[name="idInstitucional"]', '99999999');
+    await page.click('button[type="submit"]');
+
+    await expect(page.locator('.error-message')).toContainText('no encontrado');
+  });
+
+  test('should block access for blocked users', async ({ page }) => {
+    await page.goto('http://localhost:3000/login');
+
+    await page.fill('input[name="idInstitucional"]', '80999999');
+    await page.click('button[type="submit"]');
+
+    await expect(page.locator('.error-message')).toContainText('bloqueado');
+  });
+});
+```
+
+### Cypress Tests
+
+```javascript cypress/e2e/admin-dashboard.cy.js
+describe('Admin Dashboard', () => {
+  beforeEach(() => {
+    cy.visit('http://localhost:3000/admin');
+  });
+
+  it('should display statistics cards', () => {
+    cy.get('[data-testid="stat-card"]').should('have.length.at.least', 4);
+  });
+
+  it('should filter users by status', () => {
+    cy.get('select[name="filter"]').select('bloqueados');
+    cy.get('[data-testid="user-row"]').each(($row) => {
+      cy.wrap($row).should('contain', 'BLOQUEADO');
+    });
+  });
+
+  it('should unblock a user', () => {
+    cy.get('[data-testid="toggle-access-btn"]').first().click();
+    cy.get('[data-testid="confirm-modal"]').should('be.visible');
+    cy.get('[data-testid="confirm-btn"]').click();
+    
+    cy.get('.success-message').should('contain', 'desbloqueado');
+  });
+});
+```
+
+## Test Configuration
+
+### Vitest Configuration
+
+```javascript vitest.config.js
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './tests/setup.js',
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'tests/',
+        '**/*.config.js'
+      ]
+    }
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src')
+    }
+  }
+});
+```
+
+### Test Setup File
+
+```javascript tests/setup.js
+import { expect, afterEach } from 'vitest';
+import { cleanup } from '@testing-library/react';
+import matchers from '@testing-library/jest-dom/matchers';
+
+// Extend Vitest's expect with jest-dom matchers
+expect.extend(matchers);
+
+// Cleanup after each test
+afterEach(() => {
+  cleanup();
+});
+```
+
+## Test Data
+
+### Mock Data Files
+
+```javascript tests/mocks/users.js
+export const mockUsers = {
+  activeStudent: {
+    id: 1,
+    idInstitucional: '80123456',
+    nombreCompleto: 'Juan Pérez',
+    acceso: 'activo',
+    totalFallas: 0,
+    roles: ['estudiante']
+  },
+  blockedStudent: {
+    id: 2,
+    idInstitucional: '80999999',
+    nombreCompleto: 'María García',
+    acceso: 'bloqueado',
+    totalFallas: 4,
+    roles: ['estudiante']
+  },
+  atRiskEmployee: {
+    id: 3,
+    idInstitucional: '80777777',
+    nombreCompleto: 'Carlos Rodríguez',
+    acceso: 'activo',
+    totalFallas: 3,
+    roles: ['empleado']
+  }
+};
+```
+
+## Running Tests
+
+### NPM Scripts
+
+Add to `package.json`:
+
+```json
+{
+  "scripts": {
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
+  }
+}
+```
+
+### Run Tests
+
+<CodeGroup>
+```bash Unit Tests
+npm test
+```
+
+```bash With UI
+npm run test:ui
+```
+
+```bash Coverage Report
+npm run test:coverage
+```
+
+```bash E2E Tests
+npm run test:e2e
+```
+</CodeGroup>
+
+## Code Coverage Goals
+
+| Layer | Target Coverage |
+|-------|----------------|
+| Domain entities | 90%+ |
+| Use cases | 85%+ |
+| Repositories | 80%+ |
+| React components | 75%+ |
+| Hooks | 80%+ |
+
+## Best Practices
+
+<Tip>
+  **Test Naming Convention**: Use descriptive names that explain what is being tested and the expected outcome.
+  
+  ```javascript
+  // Good
+  it('should reject login when user is blocked')
+  
+  // Bad
+  it('test login')
+  ```
+</Tip>
+
+<Warning>
+  **Avoid Testing Implementation Details**: Focus on testing behavior, not internal implementation.
+</Warning>
+
+### Testing Principles
+
+1. **Arrange-Act-Assert (AAA)** pattern
+2. **Test one thing at a time**
+3. **Use descriptive test names**
+4. **Mock external dependencies**
+5. **Keep tests isolated and independent**
+6. **Avoid test interdependencies**
+
+## Continuous Integration
+
+Example GitHub Actions workflow:
+
+```yaml .github/workflows/test.yml
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run unit tests
+        run: npm test
+        
+      - name: Run E2E tests
+        run: npm run test:e2e
+        
+      - name: Generate coverage
+        run: npm run test:coverage
+```
+
+## Next Steps
+
+- Understand the [frontend architecture](/development/frontend-architecture)
+- Learn about [Clean Architecture](/development/clean-architecture)
+- Review [code standards](/development/code-standards)

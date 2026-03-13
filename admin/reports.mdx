@@ -1,0 +1,171 @@
+---
+title: Report Generation
+description: Generate and export system reports
+---
+
+# Report Generation
+
+The admin panel provides comprehensive reporting capabilities for analyzing user behavior, failures, and system usage.
+
+## Available Reports
+
+<CardGroup cols={2}>
+  <Card title="Monthly Failures" icon="calendar">
+    Summary of all failures in a given month
+  </Card>
+  <Card title="Blocked Users" icon="ban">
+    List of currently or previously blocked users
+  </Card>
+  <Card title="By Program" icon="graduation-cap">
+    Student failures grouped by academic program
+  </Card>
+  <Card title="By Department" icon="building">
+    Employee failures grouped by department
+  </Card>
+  <Card title="Trend Analysis" icon="chart-line">
+    Failure trends over time
+  </Card>
+  <Card title="Custom" icon="filter">
+    Build your own report with filters
+  </Card>
+</CardGroup>
+
+## Monthly Failure Report
+
+### SQL Query
+
+```sql
+SELECT 
+    u.id_institucional,
+    u.nombre_completo,
+    r.nombre_rol,
+    COUNT(f.id) as total_fallas,
+    COUNT(f.id) FILTER (WHERE f.motivo = 'olvido') as olvidos,
+    COUNT(f.id) FILTER (WHERE f.motivo = 'perdida') as perdidas,
+    MAX(f.fecha_hora) as ultima_falla,
+    u.acceso as estado_actual
+FROM usuarios u
+JOIN fallas f ON u.id_institucional = f.id_institucional
+LEFT JOIN usuario_roles ur ON u.id_institucional = ur.id_institucional
+LEFT JOIN roles r ON ur.rol_id = r.id
+WHERE DATE_TRUNC('month', f.fecha_hora AT TIME ZONE 'America/Bogota') = '2026-03-01'
+GROUP BY u.id_institucional, u.nombre_completo, u.acceso, r.nombre_rol
+ORDER BY total_fallas DESC;
+```
+
+### Excel Output Format
+
+| ID Institucional | Nombre Completo | Rol | Total Fallas | Olvidos | Perdidas | Última Falla | Estado |
+|-----------------|-----------------|-----|--------------|---------|----------|----------------|--------|
+| 80123456 | Juan Pérez | Estudiante | 4 | 4 | 0 | 2026-03-13 14:30 | bloqueado |
+| 80234567 | María López | Empleado | 3 | 3 | 0 | 2026-03-12 08:00 | activo |
+
+## Blocked Users Report
+
+### Current Blocked Users
+
+```sql
+SELECT 
+    u.id_institucional,
+    u.nombre_completo,
+    u.documento_identidad,
+    u.total_fallas,
+    MAX(f.fecha_hora) as fecha_bloqueo,
+    STRING_AGG(r.nombre_rol, ', ') as roles
+FROM usuarios u
+JOIN fallas f ON u.id_institucional = f.id_institucional
+LEFT JOIN usuario_roles ur ON u.id_institucional = ur.id_institucional
+LEFT JOIN roles r ON ur.rol_id = r.id
+WHERE u.acceso = 'bloqueado'
+GROUP BY u.id_institucional, u.nombre_completo, u.documento_identidad, u.total_fallas
+ORDER BY fecha_bloqueo DESC;
+```
+
+## By Program (Students)
+
+```sql
+SELECT 
+    ie.programa,
+    COUNT(DISTINCT u.id_institucional) as total_estudiantes,
+    COUNT(f.id) as total_fallas,
+    COUNT(DISTINCT CASE WHEN u.acceso = 'bloqueado' THEN u.id_institucional END) as bloqueados,
+    ROUND(AVG(u.total_fallas), 2) as promedio_fallas
+FROM info_estudiante ie
+JOIN usuarios u ON ie.id_institucional = u.id_institucional
+LEFT JOIN fallas f ON u.id_institucional = f.id_institucional
+GROUP BY ie.programa
+ORDER BY total_fallas DESC;
+```
+
+**Excel Output**:
+
+| Programa | Total Estudiantes | Fallas | Bloqueados | Promedio |
+|----------|-------------------|--------|------------|-----------|
+| Ingeniería de Sistemas | 245 | 156 | 8 | 0.64 |
+| Derecho | 189 | 98 | 4 | 0.52 |
+
+## Trend Analysis
+
+```sql
+SELECT 
+    DATE(fecha_hora AT TIME ZONE 'America/Bogota') as fecha,
+    COUNT(*) as total_fallas,
+    COUNT(*) FILTER (WHERE motivo = 'olvido') as olvidos,
+    COUNT(*) FILTER (WHERE motivo = 'perdida') as perdidas
+FROM fallas
+WHERE fecha_hora >= NOW() - INTERVAL '90 days'
+GROUP BY DATE(fecha_hora AT TIME ZONE 'America/Bogota')
+ORDER BY fecha;
+```
+
+## Export Formats
+
+<Tabs>
+  <Tab title="Excel (.xlsx)">
+    **Features**:
+    - Multiple sheets
+    - Formatted headers
+    - Auto-width columns
+    - Freeze panes
+    - Cell formatting
+
+    **Use Case**: Detailed analysis in Excel
+  </Tab>
+
+  <Tab title="CSV">
+    **Features**:
+    - Plain text
+    - Comma-separated
+    - UTF-8 encoding
+    - No formatting
+
+    **Use Case**: Import to other systems
+  </Tab>
+
+  <Tab title="PDF">
+    **Features**:
+    - Print-ready
+    - UCC branding
+    - Headers/footers
+    - Page numbers
+
+    **Use Case**: Official reports
+  </Tab>
+</Tabs>
+
+## Scheduling Reports
+
+<Note>
+  Future feature: Automated monthly reports sent via email
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Semester Management" href="/admin/semester-management">
+    Manage semester transitions
+  </Card>
+  <Card title="Dashboard" href="/admin/dashboard">
+    Back to dashboard
+  </Card>
+</CardGroup>

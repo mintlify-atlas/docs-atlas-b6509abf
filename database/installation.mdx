@@ -1,0 +1,466 @@
+---
+title: 'Database Installation'
+description: 'Step-by-step guide to set up the PostgreSQL database in Supabase'
+icon: 'rocket'
+---
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="Supabase Project" icon="database">
+    Active Supabase project with PostgreSQL 15+
+  </Card>
+  <Card title="Admin Access" icon="user-shield">
+    Access to Supabase SQL Editor
+  </Card>
+  <Card title="SQL Files" icon="file-code">
+    Database migration files from the repository
+  </Card>
+  <Card title="CSV Data" icon="file-csv">
+    Initial user data files (optional)
+  </Card>
+</CardGroup>
+
+---
+
+## Installation Methods
+
+<Tabs>
+  <Tab title="SQL Editor (Recommended)">
+    Execute SQL files directly in Supabase dashboard
+  </Tab>
+  <Tab title="Command Line">
+    Use `psql` command-line tool to run migrations
+  </Tab>
+  <Tab title="Migration Tool">
+    Use Supabase CLI migration commands
+  </Tab>
+</Tabs>
+
+---
+
+## Method 1: Supabase SQL Editor
+
+<Steps>
+  <Step title="Access SQL Editor">
+    1. Log in to your Supabase project
+    2. Navigate to **SQL Editor** in the left sidebar
+    3. Click **New Query**
+  </Step>
+  
+  <Step title="Execute 01_usuarios.sql">
+    Copy the contents of `01_usuarios.sql` and paste into the editor.
+    
+    ```sql
+    -- Creates estado_de_acceso ENUM
+    -- Creates usuarios table
+    -- Creates indexes
+    ```
+    
+    Click **Run** or press `Ctrl+Enter`.
+    
+    <Note>
+      Expected result: "Success. No rows returned"
+    </Note>
+  </Step>
+  
+  <Step title="Execute 02_roles.sql">
+    Copy and run `02_roles.sql`.
+    
+    ```sql
+    -- Creates roles table
+    -- Creates usuario_roles table
+    -- Inserts 3 default roles
+    ```
+    
+    <Info>
+      This script includes `INSERT` statements that populate the roles catalog.
+    </Info>
+  </Step>
+  
+  <Step title="Execute Information Tables">
+    Run these files in order:
+    
+    1. `03_info_estudiante.sql`
+    2. `04_info_empleado.sql`
+    3. `05_info_contratista.sql`
+    
+    Each creates a table and an index.
+  </Step>
+  
+  <Step title="Execute 06_triggers_roles.sql">
+    This file creates:
+    - `fn_asignar_rol()` function
+    - `fn_revocar_rol()` function
+    - 6 triggers for automatic role management
+    
+    <Warning>
+      Do not skip this file. Triggers are essential for the system to work.
+    </Warning>
+  </Step>
+  
+  <Step title="Execute 07_fallas.sql">
+    Creates the failures tracking system:
+    - `fallas` table
+    - `fn_actualizar_fallas()` function
+    - 2 triggers for automatic blocking
+  </Step>
+  
+  <Step title="Execute 08_rls_policies.sql">
+    Enables Row Level Security and creates policies for all tables.
+    
+    <Note>
+      Without RLS policies, the frontend application cannot access the database.
+    </Note>
+  </Step>
+  
+  <Step title="Execute 09_semestres.sql">
+    Creates the semesters table and initial data (optional).
+    
+    ```sql
+    -- Uncomment to insert initial semester
+    INSERT INTO semestres (nombre, fecha_inicio, fecha_fin)
+    VALUES ('2026-1', '2026-01-19', '2026-06-14');
+    ```
+  </Step>
+  
+  <Step title="Verify Installation">
+    Run the verification query:
+    
+    ```sql
+    SELECT tablename 
+    FROM pg_tables 
+    WHERE schemaname = 'public'
+    ORDER BY tablename;
+    ```
+    
+    **Expected tables:**
+    - `fallas`
+    - `info_contratista`
+    - `info_empleado`
+    - `info_estudiante`
+    - `roles`
+    - `semestres`
+    - `usuario_roles`
+    - `usuarios`
+  </Step>
+</Steps>
+
+---
+
+## Method 2: Command Line (psql)
+
+<Steps>
+  <Step title="Get Connection String">
+    From Supabase dashboard:
+    1. Go to **Project Settings** → **Database**
+    2. Copy the **Connection string** (URI format)
+    3. Replace `[YOUR-PASSWORD]` with your actual password
+  </Step>
+  
+  <Step title="Navigate to SQL Files Directory">
+    ```bash
+    cd ~/workspace/source/database/supabase/
+    ```
+  </Step>
+  
+  <Step title="Execute Files in Order">
+    ```bash
+    psql "postgresql://postgres:[YOUR-PASSWORD]@db.xxx.supabase.co:5432/postgres" -f 01_usuarios.sql
+    psql "postgresql://postgres:[YOUR-PASSWORD]@db.xxx.supabase.co:5432/postgres" -f 02_roles.sql
+    psql "postgresql://postgres:[YOUR-PASSWORD]@db.xxx.supabase.co:5432/postgres" -f 03_info_estudiante.sql
+    psql "postgresql://postgres:[YOUR-PASSWORD]@db.xxx.supabase.co:5432/postgres" -f 04_info_empleado.sql
+    psql "postgresql://postgres:[YOUR-PASSWORD]@db.xxx.supabase.co:5432/postgres" -f 05_info_contratista.sql
+    psql "postgresql://postgres:[YOUR-PASSWORD]@db.xxx.supabase.co:5432/postgres" -f 06_triggers_roles.sql
+    psql "postgresql://postgres:[YOUR-PASSWORD]@db.xxx.supabase.co:5432/postgres" -f 07_fallas.sql
+    psql "postgresql://postgres:[YOUR-PASSWORD]@db.xxx.supabase.co:5432/postgres" -f 08_rls_policies.sql
+    psql "postgresql://postgres:[YOUR-PASSWORD]@db.xxx.supabase.co:5432/postgres" -f 09_semestres.sql
+    ```
+  </Step>
+  
+  <Step title="Verify Installation">
+    ```bash
+    psql "postgresql://postgres:[YOUR-PASSWORD]@db.xxx.supabase.co:5432/postgres" -c "\\dt"
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Method 3: Supabase CLI
+
+<Steps>
+  <Step title="Install Supabase CLI">
+    ```bash
+    npm install -g supabase
+    ```
+  </Step>
+  
+  <Step title="Link to Project">
+    ```bash
+    supabase link --project-ref your-project-ref
+    ```
+  </Step>
+  
+  <Step title="Create Migration">
+    ```bash
+    supabase migration new initial_setup
+    ```
+  </Step>
+  
+  <Step title="Copy SQL Content">
+    Concatenate all SQL files into the migration file:
+    
+    ```bash
+    cat 01_usuarios.sql 02_roles.sql 03_info_estudiante.sql \
+        04_info_empleado.sql 05_info_contratista.sql \
+        06_triggers_roles.sql 07_fallas.sql \
+        08_rls_policies.sql 09_semestres.sql \
+        > supabase/migrations/[timestamp]_initial_setup.sql
+    ```
+  </Step>
+  
+  <Step title="Push Migration">
+    ```bash
+    supabase db push
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Execution Order Summary
+
+<Warning>
+  Execute files in this exact order. Dependencies must be created before they're referenced.
+</Warning>
+
+| Order | File | Dependencies | Creates |
+|-------|------|--------------|----------|
+| 1 | `01_usuarios.sql` | None | ENUM, usuarios table |
+| 2 | `02_roles.sql` | usuarios | roles, usuario_roles tables |
+| 3 | `03_info_estudiante.sql` | usuarios | info_estudiante table |
+| 4 | `04_info_empleado.sql` | usuarios | info_empleado table |
+| 5 | `05_info_contratista.sql` | usuarios | info_contratista table |
+| 6 | `06_triggers_roles.sql` | All info tables, roles | Functions + 6 triggers |
+| 7 | `07_fallas.sql` | usuarios | fallas table + triggers |
+| 8 | `08_rls_policies.sql` | All tables | RLS policies |
+| 9 | `09_semestres.sql` | None | semestres table |
+
+---
+
+## Post-Installation Verification
+
+### Check Tables
+
+```sql
+SELECT 
+    schemaname,
+    tablename,
+    tableowner
+FROM pg_tables 
+WHERE schemaname = 'public'
+ORDER BY tablename;
+```
+
+**Expected: 8 tables**
+
+---
+
+### Check Triggers
+
+```sql
+SELECT 
+    trigger_name,
+    event_object_table,
+    action_timing,
+    event_manipulation
+FROM information_schema.triggers
+WHERE trigger_schema = 'public'
+ORDER BY event_object_table, trigger_name;
+```
+
+**Expected: 8 triggers**
+
+---
+
+### Check Functions
+
+```sql
+SELECT 
+    routine_name,
+    routine_type
+FROM information_schema.routines
+WHERE routine_schema = 'public'
+ORDER BY routine_name;
+```
+
+**Expected:**
+- `fn_actualizar_fallas`
+- `fn_asignar_rol`
+- `fn_revocar_rol`
+
+---
+
+### Check RLS Policies
+
+```sql
+SELECT 
+    schemaname,
+    tablename,
+    policyname,
+    permissive,
+    cmd
+FROM pg_policies
+WHERE schemaname = 'public'
+ORDER BY tablename, policyname;
+```
+
+**Expected: 20+ policies across all tables**
+
+---
+
+### Check Roles Catalog
+
+```sql
+SELECT * FROM roles ORDER BY id;
+```
+
+**Expected result:**
+```
+id | nombre_rol  | descripcion
+---|-------------|------------------------------------------
+1  | Estudiante  | Usuario matriculado en un programa académico
+2  | Empleado    | Trabajador vinculado directamente a la UCC
+3  | Contratista | Proveedor externo con contrato activo
+```
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: relation already exists">
+    **Cause:** Script executed multiple times.
+    
+    **Solution:** Each script has `DROP TABLE IF EXISTS` or `DROP TRIGGER IF EXISTS` at the top. Re-run the script to recreate the object.
+  </Accordion>
+  
+  <Accordion title="Error: foreign key constraint violation">
+    **Cause:** Scripts executed out of order.
+    
+    **Solution:** Drop all tables and re-run scripts in correct order:
+    ```sql
+    DROP SCHEMA public CASCADE;
+    CREATE SCHEMA public;
+    ```
+  </Accordion>
+  
+  <Accordion title="Error: function does not exist">
+    **Cause:** `06_triggers_roles.sql` not executed before trigger creation.
+    
+    **Solution:** Run `06_triggers_roles.sql` first, then other trigger scripts.
+  </Accordion>
+  
+  <Accordion title="Frontend can't query tables">
+    **Cause:** RLS policies not applied.
+    
+    **Solution:** Execute `08_rls_policies.sql` and verify:
+    ```sql
+    SELECT tablename, rowsecurity 
+    FROM pg_tables 
+    WHERE schemaname = 'public';
+    ```
+    All tables should have `rowsecurity = true`.
+  </Accordion>
+  
+  <Accordion title="Roles not assigned automatically">
+    **Cause:** Triggers not created or not working.
+    
+    **Solution:** 
+    1. Check triggers exist:
+       ```sql
+       SELECT * FROM information_schema.triggers WHERE trigger_schema = 'public';
+       ```
+    2. Test manually:
+       ```sql
+       INSERT INTO usuarios (id_institucional, documento_identidad, nombre_completo)
+       VALUES ('TEST001', '1234567890', 'Test User');
+       
+       INSERT INTO info_estudiante (id_institucional, programa)
+       VALUES ('TEST001', 'Test Program');
+       
+       SELECT * FROM usuario_roles WHERE id_institucional = 'TEST001';
+       ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Load Data" icon="upload" href="/database/seed-data">
+    Import initial users and test data
+  </Card>
+  <Card title="Migrations" icon="code-branch" href="/database/migrations">
+    Learn about schema version management
+  </Card>
+  <Card title="Test Triggers" icon="flask" href="/database/triggers">
+    Verify automatic role assignment
+  </Card>
+  <Card title="Configure RLS" icon="lock" href="/database/tables">
+    Review security policies
+  </Card>
+</CardGroup>
+
+---
+
+## Clean Reinstall
+
+If you need to start fresh:
+
+<Warning>
+  This will delete all data and cannot be undone.
+</Warning>
+
+```sql
+-- Drop everything
+DROP SCHEMA public CASCADE;
+
+-- Recreate schema
+CREATE SCHEMA public;
+GRANT ALL ON SCHEMA public TO postgres;
+GRANT ALL ON SCHEMA public TO public;
+
+-- Re-run all migration files in order
+```
+
+---
+
+## Production Checklist
+
+<Steps>
+  <Step title="Backup Strategy">
+    - [ ] Configure automated backups in Supabase
+    - [ ] Test restore procedure
+  </Step>
+  
+  <Step title="Security">
+    - [ ] All RLS policies enabled
+    - [ ] Service role key secured (not exposed to frontend)
+    - [ ] Anon key used for public access
+  </Step>
+  
+  <Step title="Monitoring">
+    - [ ] Enable query logging
+    - [ ] Set up performance monitoring
+    - [ ] Configure alert thresholds
+  </Step>
+  
+  <Step title="Documentation">
+    - [ ] Document custom modifications
+    - [ ] Keep migration history
+    - [ ] Record API keys location
+  </Step>
+</Steps>

@@ -1,0 +1,578 @@
+---
+title: Backend Architecture
+description: Understanding the backend and API architecture of UCC Control de Acceso
+---
+
+## Overview
+
+The UCC Control de Acceso backend is designed around a **serverless architecture** using **Supabase** as the primary backend service, providing PostgreSQL database, authentication, and real-time capabilities.
+
+<Note>
+  The application currently uses Supabase for most backend operations. A REST API layer can be added for additional business logic if needed.
+</Note>
+
+## Backend Stack
+
+| Component | Technology | Purpose |
+|-----------|-----------|----------|
+| **Database** | PostgreSQL (Supabase) | Primary data storage |
+| **Backend Service** | Supabase | Database hosting, Auth, APIs |
+| **ORM/Query Builder** | Supabase JS Client | Database queries |
+| **Real-time** | Supabase Realtime | Live data updates |
+| **Storage** | Supabase Storage | File uploads (CSV, exports) |
+| **Authentication** | Supabase Auth | User authentication |
+
+## Database Architecture
+
+### Schema Overview
+
+The database follows a normalized relational design:
+
+```
+┌──────────────────────┐
+│      USUARIOS          │
+│ (Core user data)      │
+└──────────────────────┘
+           │
+     ┌─────┼─────┐
+     │         │     │
+┌────┴───┐ ┌──┴─────┬─────────────┐
+│ INFO_   │ │ USUARIO  │ REGISTRO_ │
+│ESTUDIA │ │  _ROLES  │  FALLAS   │
+│  NTE    │ │          │           │
+└─────────┘ └────┬─────┘ └─────────────┘
+               │
+          ┌────┴────┐
+          │  ROLES   │
+          └─────────┘
+```
+
+### Core Tables
+
+#### usuarios
+
+Stores primary user information:
+
+```sql database/supabase/01_usuarios.sql
+CREATE TABLE usuarios (
+  id BIGSERIAL PRIMARY KEY,
+  id_institucional VARCHAR(20) UNIQUE NOT NULL,
+  documento_identidad VARCHAR(20) UNIQUE NOT NULL,
+  nombre_completo VARCHAR(200) NOT NULL,
+  correo_institucional VARCHAR(100) UNIQUE,
+  acceso VARCHAR(20) DEFAULT 'activo' CHECK (acceso IN ('activo', 'bloqueado')),
+  total_fallas INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_usuarios_id_institucional ON usuarios(id_institucional);
+CREATE INDEX idx_usuarios_acceso ON usuarios(acceso);
+CREATE INDEX idx_usuarios_total_fallas ON usuarios(total_fallas);
+```
+
+#### roles
+
+Defines available user roles:
+
+```sql database/supabase/02_roles.sql
+CREATE TABLE roles (
+  id BIGSERIAL PRIMARY KEY,
+  nombre_rol VARCHAR(50) UNIQUE NOT NULL,
+  descripcion TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+INSERT INTO roles (nombre_rol, descripcion) VALUES
+  ('estudiante', 'Usuario con rol de estudiante activo'),
+  ('empleado', 'Usuario con rol de empleado de la universidad'),
+  ('contratista', 'Usuario con rol de contratista externo');
+```
+
+#### usuario_roles
+
+Many-to-many relationship between users and roles:
+
+```sql database/supabase/02_roles.sql
+CREATE TABLE usuario_roles (
+  usuario_id BIGINT REFERENCES usuarios(id) ON DELETE CASCADE,
+  rol_id BIGINT REFERENCES roles(id) ON DELETE CASCADE,
+  fecha_asignacion TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  activo BOOLEAN DEFAULT true,
+  PRIMARY KEY (usuario_id, rol_id)
+);
+```
+
+#### Role-Specific Tables
+
+Each role has dedicated information tables:
+
+<Tabs>
+  <Tab title="info_estudiante">
+    ```sql database/supabase/03_info_estudiante.sql
+    CREATE TABLE info_estudiante (
+      usuario_id BIGINT PRIMARY KEY REFERENCES usuarios(id) ON DELETE CASCADE,
+      programa_academico VARCHAR(200),
+      facultad VARCHAR(200),
+      campus_sede VARCHAR(100),
+      semestre INTEGER,
+      estado_academico VARCHAR(20) DEFAULT 'activo',
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+    ```
+  </Tab>
+  
+  <Tab title="info_empleado">
+    ```sql database/supabase/04_info_empleado.sql
+    CREATE TABLE info_empleado (
+      usuario_id BIGINT PRIMARY KEY REFERENCES usuarios(id) ON DELETE CASCADE,
+      dependencia VARCHAR(200),
+      cargo VARCHAR(200),
+      tipo_contrato VARCHAR(50),
+      fecha_ingreso DATE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+    ```
+  </Tab>
+  
+  <Tab title="info_contratista">
+    ```sql database/supabase/05_info_contratista.sql
+    CREATE TABLE info_contratista (
+      usuario_id BIGINT PRIMARY KEY REFERENCES usuarios(id) ON DELETE CASCADE,
+      empresa_proveedora VARCHAR(200),
+      nit_proveedor VARCHAR(50),
+      area_asignada VARCHAR(200),
+      fecha_inicio_contrato DATE,
+      fecha_fin_contrato DATE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+    ```
+  </Tab>
+</Tabs>
+
+#### registro_fallas
+
+Tracks all access failures:
+
+```sql database/supabase/07_fallas.sql
+CREATE TABLE registro_fallas (
+  id BIGSERIAL PRIMARY KEY,
+  usuario_id BIGINT REFERENCES usuarios(id) ON DELETE CASCADE,
+  fecha_hora TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  motivo VARCHAR(20) CHECK (motivo IN ('olvido', 'perdida', 'robo')),
+  observacion TEXT,
+  sede_registro VARCHAR(100),
+  vigilante_registro VARCHAR(200)
+);
+
+CREATE INDEX idx_fallas_usuario ON registro_fallas(usuario_id);
+CREATE INDEX idx_fallas_fecha ON registro_fallas(fecha_hora DESC);
+CREATE INDEX idx_fallas_motivo ON registro_fallas(motivo);
+```
+
+## Database Triggers
+
+Automated business logic using PostgreSQL triggers:
+
+### Auto-create Role Info Tables
+
+```sql database/supabase/06_triggers_roles.sql
+CREATE OR REPLACE FUNCTION auto_create_role_info()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.rol_id = 1 THEN -- Estudiante
+    INSERT INTO info_estudiante (usuario_id)
+    VALUES (NEW.usuario_id)
+    ON CONFLICT (usuario_id) DO NOTHING;
+  
+  ELSIF NEW.rol_id = 2 THEN -- Empleado
+    INSERT INTO info_empleado (usuario_id)
+    VALUES (NEW.usuario_id)
+    ON CONFLICT (usuario_id) DO NOTHING;
+  
+  ELSIF NEW.rol_id = 3 THEN -- Contratista
+    INSERT INTO info_contratista (usuario_id)
+    VALUES (NEW.usuario_id)
+    ON CONFLICT (usuario_id) DO NOTHING;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_auto_create_role_info
+AFTER INSERT ON usuario_roles
+FOR EACH ROW
+EXECUTE FUNCTION auto_create_role_info();
+```
+
+### Failure Counter Update
+
+```sql database/supabase/07_fallas.sql
+CREATE OR REPLACE FUNCTION increment_fallas_on_insert()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.motivo = 'olvido' THEN
+    UPDATE usuarios
+    SET total_fallas = total_fallas + 1,
+        acceso = CASE 
+          WHEN total_fallas + 1 >= 4 THEN 'bloqueado'
+          ELSE acceso
+        END
+    WHERE id = NEW.usuario_id;
+  
+  ELSIF NEW.motivo IN ('perdida', 'robo') THEN
+    UPDATE usuarios
+    SET acceso = 'bloqueado'
+    WHERE id = NEW.usuario_id;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_increment_fallas
+AFTER INSERT ON registro_fallas
+FOR EACH ROW
+EXECUTE FUNCTION increment_fallas_on_insert();
+```
+
+## Row Level Security (RLS)
+
+Supabase uses PostgreSQL RLS for data security:
+
+```sql database/supabase/08_rls_policies.sql
+-- Enable RLS on all tables
+ALTER TABLE usuarios ENABLE ROW LEVEL SECURITY;
+ALTER TABLE registro_fallas ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Public read access for authentication
+CREATE POLICY "Allow public read on usuarios"
+ON usuarios FOR SELECT
+USING (true);
+
+-- Policy: Authenticated users can insert failures
+CREATE POLICY "Allow insert on registro_fallas"
+ON registro_fallas FOR INSERT
+WITH CHECK (auth.role() = 'authenticated');
+
+-- Policy: Admin full access
+CREATE POLICY "Admin full access"
+ON usuarios FOR ALL
+USING (auth.jwt() ->> 'role' = 'admin');
+```
+
+## API Layer
+
+### Supabase Client
+
+The frontend communicates with Supabase directly:
+
+```javascript src/shared/lib/supabaseClient.js
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = 'https://zhljlbuwpezwgkpwvkeu.supabase.co';
+const SUPABASE_KEY = process.env.VITE_SUPABASE_KEY;
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+```
+
+### Repository Pattern
+
+Data access is abstracted through repositories:
+
+```javascript src/modules/login/infrastructure/repositories/AuthRepositoryImpl.js
+export class AuthRepositoryImpl {
+  async validateInstitutionalId(idInstitucional) {
+    const { data, error } = await supabase
+      .from('usuarios')
+      .select(`
+        *,
+        usuario_roles(
+          roles(nombre_rol)
+        )
+      `)
+      .eq('id_institucional', idInstitucional)
+      .single();
+
+    if (error) throw new Error('Usuario no encontrado');
+    
+    return new User({
+      id: data.id,
+      idInstitucional: data.id_institucional,
+      documentoIdentidad: data.documento_identidad,
+      nombreCompleto: data.nombre_completo,
+      acceso: data.acceso,
+      totalFallas: data.total_fallas,
+      roles: data.usuario_roles.map(ur => ur.roles.nombre_rol)
+    });
+  }
+}
+```
+
+### Admin Repository
+
+```javascript src/modules/admin/infrastructure/repositories/AdminRepositoryImpl.js
+export class AdminRepositoryImpl {
+  async getStats() {
+    const { data: usuarios } = await supabase
+      .from('usuarios')
+      .select('acceso, total_fallas');
+
+    return {
+      total: usuarios.length,
+      activos: usuarios.filter(u => u.acceso === 'activo').length,
+      bloqueados: usuarios.filter(u => u.acceso === 'bloqueado').length,
+      conFallas: usuarios.filter(u => u.total_fallas > 0).length,
+      enRiesgo: usuarios.filter(u => u.total_fallas >= 3 && u.acceso === 'activo').length
+    };
+  }
+
+  async getFallasUltimos7Dias() {
+    const { data } = await supabase
+      .from('registro_fallas')
+      .select('fecha_hora, motivo')
+      .gte('fecha_hora', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+      .order('fecha_hora', { ascending: true });
+
+    return data;
+  }
+
+  async toggleAcceso(id_institucional, nuevoAcceso) {
+    const { error } = await supabase
+      .from('usuarios')
+      .update({ 
+        acceso: nuevoAcceso,
+        total_fallas: nuevoAcceso === 'activo' ? 0 : undefined
+      })
+      .eq('id_institucional', id_institucional);
+
+    if (error) throw error;
+  }
+}
+```
+
+## Business Logic
+
+### Use Cases
+
+Business rules are encapsulated in use case classes:
+
+```javascript src/modules/login/domain/usecases/ValidateInstitutionalIdUseCase.js
+export class ValidateInstitutionalIdUseCase {
+  constructor(authRepository) {
+    this.authRepository = authRepository;
+  }
+
+  async execute(idInstitucional) {
+    // Validate format
+    if (!idInstitucional || idInstitucional.trim() === '') {
+      return { success: false, error: 'El ID institucional es requerido' };
+    }
+
+    if (!/^\d+$/.test(idInstitucional)) {
+      return { success: false, error: 'El ID institucional debe contener solo números' };
+    }
+
+    // Fetch user
+    const user = await this.authRepository.validateInstitutionalId(idInstitucional);
+
+    if (!user) {
+      return { success: false, error: 'ID institucional no encontrado' };
+    }
+
+    // Check if blocked
+    if (user.isBlocked()) {
+      return { success: false, error: 'Tu acceso está bloqueado. Comunícate con la administración.' };
+    }
+
+    return { success: true, user };
+  }
+}
+```
+
+## Data Export
+
+### Excel Generation
+
+Using the `xlsx` library for report exports:
+
+```javascript
+import * as XLSX from 'xlsx';
+
+export const exportToExcel = (data, filename) => {
+  // Create worksheet
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  
+  // Create workbook
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Reporte');
+  
+  // Generate Excel file
+  XLSX.writeFile(workbook, `${filename}.xlsx`);
+};
+
+// Usage in admin panel
+const handleExport = async () => {
+  const usuarios = await repo.getUsuarios();
+  const data = usuarios.map(u => ({
+    'ID Institucional': u.id_institucional,
+    'Nombre': u.nombre_completo,
+    'Estado': u.acceso,
+    'Fallas': u.total_fallas
+  }));
+  
+  exportToExcel(data, 'reporte-usuarios');
+};
+```
+
+## Real-time Updates
+
+Supabase provides real-time subscriptions:
+
+```javascript
+const subscription = supabase
+  .channel('usuarios-changes')
+  .on(
+    'postgres_changes',
+    {
+      event: '*',
+      schema: 'public',
+      table: 'usuarios'
+    },
+    (payload) => {
+      console.log('Change detected:', payload);
+      // Update UI
+      refetchUsers();
+    }
+  )
+  .subscribe();
+
+// Cleanup
+return () => {
+  subscription.unsubscribe();
+};
+```
+
+## File Uploads (CSV)
+
+### Bulk User Import
+
+```javascript
+import { parse } from 'papaparse';
+
+const handleCSVUpload = (file) => {
+  parse(file, {
+    header: true,
+    complete: async (results) => {
+      const users = results.data;
+      
+      for (const user of users) {
+        await supabase.from('usuarios').insert({
+          id_institucional: user.id_institucional,
+          documento_identidad: user.documento_identidad,
+          nombre_completo: user.nombre_completo,
+          correo_institucional: user.correo_institucional
+        });
+      }
+      
+      console.log('Import complete');
+    }
+  });
+};
+```
+
+## Error Handling
+
+### Database Errors
+
+```javascript
+try {
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select('*');
+
+  if (error) throw error;
+  
+  return data;
+} catch (error) {
+  if (error.code === '23505') {
+    throw new Error('El ID institucional ya existe');
+  } else if (error.code === '23503') {
+    throw new Error('Referencia inválida');
+  } else {
+    throw new Error('Error de base de datos: ' + error.message);
+  }
+}
+```
+
+## Performance Considerations
+
+### Indexes
+
+Optimized queries with proper indexing:
+
+```sql
+CREATE INDEX idx_usuarios_id_institucional ON usuarios(id_institucional);
+CREATE INDEX idx_usuarios_acceso ON usuarios(acceso);
+CREATE INDEX idx_fallas_usuario ON registro_fallas(usuario_id);
+CREATE INDEX idx_fallas_fecha ON registro_fallas(fecha_hora DESC);
+```
+
+### Query Optimization
+
+```javascript
+// Bad: N+1 query problem
+for (const user of users) {
+  const roles = await supabase
+    .from('usuario_roles')
+    .select('*')
+    .eq('usuario_id', user.id);
+}
+
+// Good: Single query with join
+const { data } = await supabase
+  .from('usuarios')
+  .select(`
+    *,
+    usuario_roles(roles(nombre_rol))
+  `);
+```
+
+## Security Best Practices
+
+<Warning>
+  Never expose Supabase service role key in client-side code. Use anon key with RLS policies.
+</Warning>
+
+### Environment Variables
+
+```bash
+# Public key (safe to expose)
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_anon_key
+
+# Private key (server-side only)
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+```
+
+### Input Validation
+
+```javascript
+// Validate before database operations
+const validateIdInstitucional = (id) => {
+  if (!/^\d{6,10}$/.test(id)) {
+    throw new Error('ID institucional inválido');
+  }
+  return id;
+};
+```
+
+## Next Steps
+
+- Learn about [Clean Architecture](/development/clean-architecture) principles
+- Review [Deployment](/development/deployment) strategies
+- Check [Code Standards](/development/code-standards)

@@ -1,0 +1,600 @@
+---
+title: Frontend Architecture
+description: Understanding the React frontend architecture of UCC Control de Acceso
+---
+
+## Overview
+
+The UCC Control de Acceso frontend is built with **React 18.2** using a modular, feature-based architecture. The application follows Clean Architecture principles with clear separation of concerns.
+
+## Technology Stack
+
+| Technology | Version | Purpose |
+|------------|---------|----------|
+| **React** | 18.2.0 | UI framework |
+| **React Router** | 6.20.0 | Client-side routing |
+| **Vite** | 5.0.8 | Build tool and dev server |
+| **Tailwind CSS** | 3.3.6 | Utility-first CSS framework |
+| **Axios** | 1.6.2 | HTTP client |
+| **Recharts** | 3.7.0 | Data visualization |
+| **XLSX** | 0.18.5 | Excel export functionality |
+| **Supabase** | 2.97.0 | Database client |
+
+## Project Structure
+
+The application follows a **feature-based modular architecture**:
+
+```
+src/
+├── modules/                    # Feature modules (Clean Architecture)
+│   ├── login/                 # Authentication module
+│   │   ├── application/       # Application layer
+│   │   │   └── hooks/         # Custom React hooks
+│   │   ├── domain/            # Domain layer
+│   │   │   ├── entities/      # Business entities (User)
+│   │   │   ├── repositories/  # Repository interfaces
+│   │   │   └── usecases/      # Business use cases
+│   │   ├── infrastructure/    # Infrastructure layer
+│   │   │   ├── api/           # API clients
+│   │   │   └── repositories/  # Repository implementations
+│   │   └── presentation/      # Presentation layer
+│   │       ├── components/    # React components
+│   │       └── pages/         # Page components
+│   ├── user-profile/          # User profile module
+│   └── admin/                 # Admin dashboard module
+├── shared/                    # Shared code
+│   ├── components/            # Reusable UI components
+│   └── lib/                   # Utility libraries
+├── assets/                    # Static assets
+├── App.jsx                    # Root component
+├── index.jsx                  # Application entry point
+└── index.css                  # Global styles
+```
+
+## Application Modules
+
+The application is divided into three main feature modules:
+
+### 1. Login Module
+
+**Purpose**: Handle user authentication via institutional ID
+
+**Key Components**:
+- `LoginPage.jsx` - Main login page (src/modules/login/presentation/pages/LoginPage.jsx:1)
+- `LoginForm.jsx` - Login form component
+- `useLogin.js` - Custom hook for login logic (src/modules/login/application/hooks/useLogin.js:1)
+
+**Use Cases**:
+- `ValidateInstitutionalIdUseCase.js` - Validates institutional ID (src/modules/login/domain/usecases/ValidateInstitutionalIdUseCase.js:1)
+
+**Entities**:
+- `User.js` - User domain entity (src/modules/login/domain/entities/User.js:1)
+
+### 2. User Profile Module
+
+**Purpose**: Display user information and register access failures
+
+**Key Components**:
+- `UserProfilePage.jsx` - Main profile page
+- `ProfileHeader.jsx` - User header with name and ID
+- `PersonalInfoCard.jsx` - Personal information display
+- `RoleInfoCard.jsx` - Role-specific information
+- `FallasHistory.jsx` - Failure history display
+- `ReportTICModal.jsx` - Modal for reporting failures
+
+**Hooks**:
+- `useUserProfile.js` - Manages user profile state
+
+### 3. Admin Module
+
+**Purpose**: Administrative dashboard for managing users and generating reports
+
+**Key Components**:
+- `AdminPage.jsx` - Main admin dashboard (src/modules/admin/presentation/pages/AdminPage.jsx:1)
+- `AdminSidebar.jsx` - Navigation sidebar
+- `StatCard.jsx` - Statistics display card
+- `ResumenView.jsx` - Summary statistics view
+- `EstudiantesView.jsx` - Student management view
+- `ReportesView.jsx` - Reports generation view
+- `CargarCSVView.jsx` - CSV bulk upload view
+- `AccesoModal.jsx` - User access control modal
+- `NuevoSemestreModal.jsx` - Semester reset modal
+
+**Hooks**:
+- `useAdminDashboard.js` - Main dashboard hook (src/modules/admin/application/hooks/useAdminDashboard.js:1)
+- `useReporte.js` - Report generation hook
+- `useNuevoSemestre.js` - Semester management hook
+
+## Routing Architecture
+
+The application uses **React Router v6** for navigation:
+
+```jsx src/App.jsx
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ProtectedRoute } from './shared/components/ProtectedRoute';
+
+function App() {
+  return (
+    <Router>
+      <Routes>
+        {/* Public route */}
+        <Route path="/login" element={<LoginPage />} />
+
+        {/* Protected route */}
+        <Route
+          path="/user-profile"
+          element={
+            <ProtectedRoute>
+              <UserProfilePage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Admin route */}
+        <Route path="/admin" element={<AdminPage />} />
+
+        {/* Default redirect */}
+        <Route path="/" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </Router>
+  );
+}
+```
+
+### Route Protection
+
+Protected routes use the `ProtectedRoute` component:
+
+```jsx src/shared/components/ProtectedRoute.jsx
+export const ProtectedRoute = ({ children }) => {
+  const user = localStorage.getItem('current_user');
+  
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  return children;
+};
+```
+
+## State Management
+
+The application uses **React hooks** for state management:
+
+### Local Component State
+
+Using `useState` for component-level state:
+
+```jsx
+const [loading, setLoading] = useState(false);
+const [error, setError] = useState(null);
+const [users, setUsers] = useState([]);
+```
+
+### Custom Hooks Pattern
+
+Encapsulating business logic in custom hooks:
+
+```javascript src/modules/admin/application/hooks/useAdminDashboard.js
+export const useAdminDashboard = () => {
+  const [stats, setStats] = useState(null);
+  const [usuarios, setUsuarios] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(refrescoSilencioso, 30000);
+    return () => clearInterval(interval);
+  }, [refrescoSilencioso]);
+
+  const toggleAcceso = async (id_institucional, nuevoAcceso) => {
+    await repo.toggleAcceso(id_institucional, nuevoAcceso);
+    // Update local state
+  };
+
+  return { stats, usuarios, loading, error, toggleAcceso };
+};
+```
+
+### State Persistence
+
+Using `localStorage` for simple persistence:
+
+```javascript
+// Store user data
+localStorage.setItem('current_user', JSON.stringify(user));
+
+// Retrieve user data
+const user = JSON.parse(localStorage.getItem('current_user'));
+
+// Clear on logout
+localStorage.removeItem('current_user');
+```
+
+## Data Fetching
+
+The application uses multiple approaches for data fetching:
+
+### 1. Axios HTTP Client
+
+Configured with interceptors for authentication:
+
+```javascript src/modules/login/infrastructure/api/apiClient.js
+import axios from 'axios';
+
+const apiClient = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+// Request interceptor - add auth token
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Response interceptor - handle errors
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('auth_token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+```
+
+### 2. Supabase Client
+
+Direct database access for certain operations:
+
+```javascript src/shared/lib/supabaseClient.js
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = 'https://zhljlbuwpezwgkpwvkeu.supabase.co';
+const SUPABASE_KEY = process.env.VITE_SUPABASE_KEY;
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+```
+
+### 3. Repository Pattern
+
+Abstracting data access behind repositories:
+
+```javascript
+export class AdminRepositoryImpl {
+  async getStats() {
+    const { data, error } = await supabase
+      .rpc('get_dashboard_stats');
+    
+    if (error) throw error;
+    return data;
+  }
+
+  async getUsuarios() {
+    const { data, error } = await supabase
+      .from('usuarios')
+      .select('*');
+    
+    if (error) throw error;
+    return data;
+  }
+
+  async toggleAcceso(id_institucional, nuevoAcceso) {
+    const { error } = await supabase
+      .from('usuarios')
+      .update({ acceso: nuevoAcceso })
+      .eq('id_institucional', id_institucional);
+    
+    if (error) throw error;
+  }
+}
+```
+
+## Styling Architecture
+
+### Tailwind CSS
+
+The application uses **Tailwind CSS** for styling with custom UCC branding:
+
+```javascript tailwind.config.js
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,jsx,ts,tsx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        'ucc-azul': {
+          primary: '#003DA5',  // UCC Blue
+          dark: '#002870',
+          light: '#4A7BBA',
+        },
+        'ucc-naranja': {
+          primary: '#FF6B35',  // UCC Orange
+          light: '#FF8C5F',
+          dark: '#E55A2B',
+        }
+      },
+      fontFamily: {
+        sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+      }
+    },
+  },
+  plugins: [],
+}
+```
+
+### Component Styling Pattern
+
+```jsx
+function StatCard({ title, value, icon, color }) {
+  return (
+    <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-gray-600 text-sm font-medium">{title}</p>
+          <p className={`text-3xl font-bold mt-2 ${color}`}>{value}</p>
+        </div>
+        <div className={`w-12 h-12 rounded-full flex items-center justify-center ${color} bg-opacity-10`}>
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+### Global Styles
+
+```css src/index.css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-sans antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-ucc-azul-primary text-white px-6 py-3 rounded-lg hover:bg-ucc-azul-dark transition-colors;
+  }
+  
+  .btn-secondary {
+    @apply bg-ucc-naranja-primary text-white px-6 py-3 rounded-lg hover:bg-ucc-naranja-dark transition-colors;
+  }
+}
+```
+
+## Component Patterns
+
+### Presentational Components
+
+Focused solely on rendering UI:
+
+```jsx
+export const StatCard = ({ title, value, icon, color }) => (
+  <div className="stat-card">
+    <h3>{title}</h3>
+    <p className={color}>{value}</p>
+    {icon}
+  </div>
+);
+```
+
+### Container Components
+
+Handle business logic and data fetching:
+
+```jsx
+export const AdminPage = () => {
+  const { 
+    stats, 
+    usuarios, 
+    loading, 
+    error, 
+    toggleAcceso 
+  } = useAdminDashboard();
+
+  if (loading) return <LoadingSpinner />;
+  if (error) return <ErrorMessage message={error} />;
+
+  return (
+    <div>
+      <StatCard title="Total Usuarios" value={stats.total} />
+      <UserList users={usuarios} onToggleAcceso={toggleAcceso} />
+    </div>
+  );
+};
+```
+
+### Custom Hooks
+
+Encapsulate reusable logic:
+
+```javascript
+export const useLogin = () => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const navigate = useNavigate();
+
+  const login = async (idInstitucional) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const useCase = new ValidateInstitutionalIdUseCase(repository);
+      const result = await useCase.execute(idInstitucional);
+      
+      if (result.success) {
+        localStorage.setItem('current_user', JSON.stringify(result.user));
+        navigate('/user-profile');
+      } else {
+        setError(result.error);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { login, loading, error };
+};
+```
+
+## Performance Optimization
+
+### Code Splitting
+
+Using React lazy loading:
+
+```jsx
+import { lazy, Suspense } from 'react';
+
+const AdminPage = lazy(() => import('./modules/admin/presentation/pages/AdminPage'));
+
+function App() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <Route path="/admin" element={<AdminPage />} />
+    </Suspense>
+  );
+}
+```
+
+### Memoization
+
+Using `useMemo` and `useCallback`:
+
+```javascript
+const filteredUsers = useMemo(() => {
+  return usuarios.filter(u => u.acceso === filter);
+}, [usuarios, filter]);
+
+const handleToggle = useCallback((id, newAcceso) => {
+  toggleAcceso(id, newAcceso);
+}, [toggleAcceso]);
+```
+
+### Auto-refresh Without Disruption
+
+Silent background updates:
+
+```javascript src/modules/admin/application/hooks/useAdminDashboard.js:56
+const refrescoSilencioso = useCallback(async () => {
+  try {
+    const [s, u] = await Promise.all([
+      repo.getStats(),
+      repo.getUsuarios(),
+    ]);
+    setStats(s);
+    setUsuarios(u);
+    setUltimaActualizacion(new Date());
+  } catch {
+    // Silent - don't show error to user
+  }
+}, []);
+
+useEffect(() => {
+  const interval = setInterval(refrescoSilencioso, 30000); // 30 seconds
+  return () => clearInterval(interval);
+}, [refrescoSilencioso]);
+```
+
+## Error Handling
+
+### Component-Level Error Boundaries
+
+```jsx
+class ErrorBoundary extends React.Component {
+  state = { hasError: false };
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Error caught:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <ErrorFallback />;
+    }
+    return this.props.children;
+  }
+}
+```
+
+### API Error Handling
+
+```javascript
+try {
+  const response = await apiClient.post('/api/endpoint', data);
+  return response.data;
+} catch (error) {
+  if (error.response) {
+    // Server responded with error status
+    throw new Error(error.response.data.message);
+  } else if (error.request) {
+    // Request made but no response
+    throw new Error('Sin conexión al servidor');
+  } else {
+    // Error setting up request
+    throw new Error('Error en la solicitud');
+  }
+}
+```
+
+## Build Configuration
+
+### Vite Configuration
+
+```javascript vite.config.js
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 3000,
+    open: true
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor': ['react', 'react-dom', 'react-router-dom'],
+          'charts': ['recharts'],
+          'excel': ['xlsx']
+        }
+      }
+    }
+  }
+});
+```
+
+## Next Steps
+
+- Learn about [Backend Architecture](/development/backend-architecture)
+- Understand [Clean Architecture](/development/clean-architecture) principles
+- Review [Code Standards](/development/code-standards)

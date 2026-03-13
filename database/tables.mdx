@@ -1,0 +1,399 @@
+---
+title: 'Database Tables'
+description: 'Complete table schemas with columns, data types, and constraints'
+icon: 'table'
+---
+
+## Core Tables
+
+### usuarios
+
+Main user registry containing basic identification and access control data.
+
+<ParamField path="id" type="BIGINT" required>
+  Primary key. Auto-generated identity column.
+</ParamField>
+
+<ParamField path="id_institucional" type="VARCHAR(20)" required>
+  Institutional ID assigned by UCC. Must be unique.
+  
+  **Example:** `80100001`, `80100002`
+</ParamField>
+
+<ParamField path="documento_identidad" type="VARCHAR(20)" required>
+  National ID number (Cédula de Ciudadanía). Must be unique.
+  
+  **Example:** `1037654321`
+</ParamField>
+
+<ParamField path="nombre_completo" type="VARCHAR(150)" required>
+  Full name of the user.
+  
+  **Example:** `Juan Diego Pérez Gómez`
+</ParamField>
+
+<ParamField path="acceso" type="estado_de_acceso" default="activo">
+  Access status. ENUM type with values:
+  - `activo` - User can enter
+  - `bloqueado` - Access denied
+</ParamField>
+
+<ParamField path="total_fallas" type="INT" default="0">
+  Accumulated failure count. Maximum 4 before automatic block.
+</ParamField>
+
+**Indexes:**
+- `idx_usuarios_id_institucional` on `id_institucional`
+- `idx_usuarios_documento` on `documento_identidad`
+- `idx_usuarios_acceso` on `acceso`
+
+**SQL Definition:**
+```sql
+CREATE TABLE usuarios (
+    id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_institucional    VARCHAR(20)       NOT NULL UNIQUE,
+    documento_identidad VARCHAR(20)       NOT NULL UNIQUE,
+    nombre_completo     VARCHAR(150)      NOT NULL,
+    acceso              estado_de_acceso  NOT NULL DEFAULT 'activo',
+    total_fallas        INT               NOT NULL DEFAULT 0
+);
+```
+
+---
+
+### roles
+
+Fixed catalog of available roles in the system.
+
+<ParamField path="id" type="BIGINT" required>
+  Primary key. Auto-generated identity column.
+</ParamField>
+
+<ParamField path="nombre_rol" type="VARCHAR(50)" required>
+  Role name. Must be unique.
+  
+  **Values:**
+  - `Estudiante`
+  - `Empleado`
+  - `Contratista`
+</ParamField>
+
+<ParamField path="descripcion" type="TEXT">
+  Description of the role.
+</ParamField>
+
+<Note>
+  This table is pre-populated with three roles and should not be modified during regular operations.
+</Note>
+
+**Initial Data:**
+```sql
+INSERT INTO roles (nombre_rol, descripcion) VALUES
+    ('Estudiante',   'Usuario matriculado en un programa académico'),
+    ('Empleado',     'Trabajador vinculado directamente a la UCC'),
+    ('Contratista',  'Proveedor externo con contrato activo');
+```
+
+---
+
+### usuario_roles
+
+Many-to-many relationship table between users and roles.
+
+<ParamField path="id" type="BIGINT" required>
+  Primary key. Auto-generated identity column.
+</ParamField>
+
+<ParamField path="id_institucional" type="VARCHAR(20)" required>
+  Foreign key to `usuarios.id_institucional`.
+  
+  **Cascade:** `ON DELETE CASCADE`
+</ParamField>
+
+<ParamField path="rol_id" type="BIGINT" required>
+  Foreign key to `roles.id`.
+</ParamField>
+
+**Constraints:**
+- `UNIQUE (id_institucional, rol_id)` - Prevents duplicate role assignments
+
+**Indexes:**
+- `idx_usuario_roles_institucional` on `id_institucional`
+- `idx_usuario_roles_rol` on `rol_id`
+
+<Warning>
+  This table is automatically populated by triggers. Do not insert records manually.
+</Warning>
+
+**SQL Definition:**
+```sql
+CREATE TABLE usuario_roles (
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_institucional VARCHAR(20) NOT NULL REFERENCES usuarios(id_institucional) ON DELETE CASCADE,
+    rol_id           BIGINT      NOT NULL REFERENCES roles(id),
+    CONSTRAINT uq_usuario_rol UNIQUE (id_institucional, rol_id)
+);
+```
+
+---
+
+## Information Tables
+
+### info_estudiante
+
+Stores academic program information for students.
+
+<ParamField path="id" type="BIGINT" required>
+  Primary key. Auto-generated identity column.
+</ParamField>
+
+<ParamField path="id_institucional" type="VARCHAR(20)" required>
+  Foreign key to `usuarios.id_institucional`. Must be unique.
+  
+  **Cascade:** `ON DELETE CASCADE`
+</ParamField>
+
+<ParamField path="programa" type="VARCHAR(150)" required>
+  Academic program name.
+  
+  **Example:** `Ingeniería de Sistemas`, `Derecho`
+</ParamField>
+
+**Triggers:**
+- `trg_asignar_rol_estudiante` - Assigns "Estudiante" role on INSERT
+- `trg_revocar_rol_estudiante` - Revokes "Estudiante" role on DELETE
+
+**Index:**
+- `idx_info_est_id_inst` on `id_institucional`
+
+**SQL Definition:**
+```sql
+CREATE TABLE info_estudiante (
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_institucional VARCHAR(20)  NOT NULL UNIQUE
+                     REFERENCES usuarios(id_institucional) ON DELETE CASCADE,
+    programa         VARCHAR(150) NOT NULL
+);
+```
+
+---
+
+### info_empleado
+
+Stores job information for employees.
+
+<ParamField path="id" type="BIGINT" required>
+  Primary key. Auto-generated identity column.
+</ParamField>
+
+<ParamField path="id_institucional" type="VARCHAR(20)" required>
+  Foreign key to `usuarios.id_institucional`. Must be unique.
+  
+  **Cascade:** `ON DELETE CASCADE`
+</ParamField>
+
+<ParamField path="cargo" type="VARCHAR(150)" required>
+  Job title.
+  
+  **Example:** `Docente de Planta`, `Coordinador Académico`
+</ParamField>
+
+<ParamField path="dependencia" type="VARCHAR(150)" required>
+  Department or division.
+  
+  **Example:** `Facultad de Ingeniería`, `Recursos Humanos`
+</ParamField>
+
+**Triggers:**
+- `trg_asignar_rol_empleado` - Assigns "Empleado" role on INSERT
+- `trg_revocar_rol_empleado` - Revokes "Empleado" role on DELETE
+
+**Index:**
+- `idx_info_emp_id_inst` on `id_institucional`
+
+**SQL Definition:**
+```sql
+CREATE TABLE info_empleado (
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_institucional VARCHAR(20)  NOT NULL UNIQUE
+                     REFERENCES usuarios(id_institucional) ON DELETE CASCADE,
+    cargo            VARCHAR(150) NOT NULL,
+    dependencia      VARCHAR(150) NOT NULL
+);
+```
+
+---
+
+### info_contratista
+
+Stores company information for contractors.
+
+<ParamField path="id" type="BIGINT" required>
+  Primary key. Auto-generated identity column.
+</ParamField>
+
+<ParamField path="id_institucional" type="VARCHAR(20)" required>
+  Foreign key to `usuarios.id_institucional`. Must be unique.
+  
+  **Cascade:** `ON DELETE CASCADE`
+</ParamField>
+
+<ParamField path="empresa" type="VARCHAR(200)" required>
+  Company name (razón social).
+  
+  **Example:** `ACME S.A.S.`, `Constructora XYZ Ltda.`
+</ParamField>
+
+**Triggers:**
+- `trg_asignar_rol_contratista` - Assigns "Contratista" role on INSERT
+- `trg_revocar_rol_contratista` - Revokes "Contratista" role on DELETE
+
+**Index:**
+- `idx_info_con_id_inst` on `id_institucional`
+
+**SQL Definition:**
+```sql
+CREATE TABLE info_contratista (
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_institucional VARCHAR(20)  NOT NULL UNIQUE
+                     REFERENCES usuarios(id_institucional) ON DELETE CASCADE,
+    empresa          VARCHAR(200) NOT NULL
+);
+```
+
+---
+
+## Transaction Tables
+
+### fallas
+
+Records incidents when users don't have their institutional ID card (TIC).
+
+<ParamField path="id" type="BIGINT" required>
+  Primary key. Auto-generated identity column.
+</ParamField>
+
+<ParamField path="id_institucional" type="VARCHAR(20)" required>
+  Foreign key to `usuarios.id_institucional`.
+  
+  **Cascade:** `ON DELETE CASCADE`
+</ParamField>
+
+<ParamField path="fecha_hora" type="TIMESTAMPTZ" default="NOW()">
+  Timestamp of the incident (with timezone).
+</ParamField>
+
+<ParamField path="motivo" type="VARCHAR(10)" required>
+  Reason for the failure. CHECK constraint allows only:
+  - `olvido` - User forgot the card
+  - `perdida` - Card is lost
+</ParamField>
+
+**Triggers:**
+- `trg_fallas_insert` - Recalculates total_fallas and blocks user if needed
+- `trg_fallas_delete` - Recalculates total_fallas if a failure is removed
+
+**Indexes:**
+- `idx_fallas_id_inst` on `id_institucional`
+- `idx_fallas_fecha_hora` on `fecha_hora DESC`
+
+**SQL Definition:**
+```sql
+CREATE TABLE fallas (
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_institucional VARCHAR(20)  NOT NULL
+                     REFERENCES usuarios(id_institucional) ON DELETE CASCADE,
+    fecha_hora       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    motivo           VARCHAR(10)  NOT NULL
+                     CHECK (motivo IN ('olvido', 'perdida'))
+);
+```
+
+---
+
+### semestres
+
+Manages academic semester periods.
+
+<ParamField path="id" type="BIGSERIAL" required>
+  Primary key. Auto-generated.
+</ParamField>
+
+<ParamField path="nombre" type="TEXT" required>
+  Semester name.
+  
+  **Example:** `2026-1`, `2026-2`
+</ParamField>
+
+<ParamField path="fecha_inicio" type="DATE" required>
+  Semester start date.
+</ParamField>
+
+<ParamField path="fecha_fin" type="DATE" required>
+  Semester end date.
+</ParamField>
+
+<ParamField path="activo" type="BOOLEAN" default="true">
+  Whether this semester is currently active.
+</ParamField>
+
+<ParamField path="creado_en" type="TIMESTAMPTZ" default="now()">
+  Creation timestamp.
+</ParamField>
+
+**Constraints:**
+- `semestres_fechas_validas` - Ensures `fecha_fin > fecha_inicio`
+- Unique index on `activo` where `activo = true` - Only one active semester allowed
+
+**SQL Definition:**
+```sql
+CREATE TABLE semestres (
+  id           BIGSERIAL PRIMARY KEY,
+  nombre       TEXT        NOT NULL,
+  fecha_inicio DATE        NOT NULL,
+  fecha_fin    DATE        NOT NULL,
+  activo       BOOLEAN     NOT NULL DEFAULT true,
+  creado_en    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT semestres_fechas_validas CHECK (fecha_fin > fecha_inicio)
+);
+
+CREATE UNIQUE INDEX semestres_activo_unico
+  ON semestres (activo)
+  WHERE activo = true;
+```
+
+---
+
+## Custom Types
+
+### estado_de_acceso
+
+ENUM type for user access status.
+
+```sql
+CREATE TYPE estado_de_acceso AS ENUM ('activo', 'bloqueado');
+```
+
+**Values:**
+- `activo` - User can enter the premises
+- `bloqueado` - Access denied
+
+---
+
+## Summary
+
+<CardGroup cols={3}>
+  <Card title="9 Tables" icon="table">
+    Complete schema for access control
+  </Card>
+  <Card title="1 Custom Type" icon="tag">
+    ENUM for access states
+  </Card>
+  <Card title="RLS Enabled" icon="lock">
+    All tables have Row Level Security
+  </Card>
+</CardGroup>
+
+<Info>
+  See the [Relationships](/database/relationships) page for foreign key details and the [Triggers](/database/triggers) page for automated behaviors.
+</Info>

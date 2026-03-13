@@ -1,0 +1,315 @@
+---
+title: Running Locally
+description: Learn how to run the UCC Control de Acceso application in development mode
+---
+
+## Development Server
+
+The project uses **Vite** as the build tool and development server, providing fast hot module replacement (HMR) and optimized builds.
+
+### Start the Development Server
+
+<CodeGroup>
+```bash npm
+npm run dev
+```
+
+```bash yarn
+yarn dev
+```
+
+```bash pnpm
+pnpm dev
+```
+</CodeGroup>
+
+The development server will start on `http://localhost:3000` and automatically open in your default browser.
+
+<Note>
+  The port can be configured in `vite.config.js` under the `server.port` option.
+</Note>
+
+## Available Scripts
+
+The following scripts are defined in `package.json`:
+
+| Script | Command | Description |
+|--------|---------|-------------|
+| `dev` | `vite` | Starts the development server with HMR |
+| `build` | `vite build` | Creates an optimized production build |
+| `preview` | `vite preview` | Previews the production build locally |
+
+### Development Mode
+
+```bash
+npm run dev
+```
+
+**Features:**
+- Hot Module Replacement (HMR) - changes appear instantly
+- Source maps enabled for debugging
+- Fast refresh for React components
+- Development-specific error messages
+
+### Production Build
+
+```bash
+npm run build
+```
+
+**Output:**
+- Optimized JavaScript bundles in `/dist`
+- Minified and tree-shaken code
+- Source maps generated (configurable)
+- Assets are hashed for cache busting
+
+### Preview Production Build
+
+```bash
+npm run preview
+```
+
+Previews the production build locally before deployment.
+
+## Project Structure
+
+The application follows a **Clean Architecture** pattern with modular organization:
+
+```
+src/
+├── modules/              # Feature modules
+│   ├── login/           # Authentication module
+│   │   ├── application/ # Business logic (hooks, use cases)
+│   │   ├── domain/      # Entities, repositories
+│   │   ├── infrastructure/ # API clients, implementations
+│   │   └── presentation/   # UI components, pages
+│   ├── user-profile/    # User profile module
+│   └── admin/           # Admin dashboard module
+├── shared/              # Shared utilities
+│   ├── components/      # Reusable components
+│   └── lib/             # Utilities (Supabase client, etc.)
+├── assets/              # Static assets (images, icons)
+├── App.jsx              # Root application component
+├── index.jsx            # Application entry point
+└── index.css            # Global styles
+```
+
+## Application Routes
+
+The application defines the following routes:
+
+| Route | Component | Description | Protected |
+|-------|-----------|-------------|----------|
+| `/` | Redirect to `/login` | Root redirect | No |
+| `/login` | `LoginPage` | User authentication | No |
+| `/user-profile` | `UserProfilePage` | User profile and failure registration | Yes |
+| `/admin` | `AdminPage` | Admin dashboard | Yes |
+
+<Note>
+  Protected routes require authentication. See `src/shared/components/ProtectedRoute.jsx` for implementation.
+</Note>
+
+## Development Workflow
+
+<Steps>
+  <Step title="Start the dev server">
+    ```bash
+    npm run dev
+    ```
+  </Step>
+
+  <Step title="Navigate to the login page">
+    Open `http://localhost:3000/login` in your browser.
+  </Step>
+
+  <Step title="Test authentication">
+    Enter a valid institutional ID (e.g., from test data) to access the user profile.
+  </Step>
+
+  <Step title="Access admin panel">
+    Navigate to `/admin` to access the administrative dashboard.
+  </Step>
+
+  <Step title="Make changes">
+    Edit source files - changes will hot reload automatically.
+  </Step>
+</Steps>
+
+## Hot Module Replacement (HMR)
+
+Vite provides fast HMR out of the box:
+
+- **CSS changes**: Applied instantly without page reload
+- **React components**: Fast refresh preserves component state
+- **Module changes**: Updates specific modules without full reload
+
+<Tip>
+  If HMR stops working, try refreshing the page or restarting the dev server.
+</Tip>
+
+## Browser DevTools
+
+### React Developer Tools
+
+Install the React DevTools browser extension:
+
+- **Chrome**: [React Developer Tools](https://chrome.google.com/webstore/detail/react-developer-tools/fmkadmapgofadopljbjfkapdkoienihi)
+- **Firefox**: [React Developer Tools](https://addons.mozilla.org/en-US/firefox/addon/react-devtools/)
+
+### Redux DevTools (if applicable)
+
+For state management debugging:
+
+- **Chrome**: [Redux DevTools](https://chrome.google.com/webstore/detail/redux-devtools/lmhkpmbekcpmknklioeibfkpmmfibljd)
+
+## Debugging
+
+### Browser Console
+
+Open browser DevTools (F12) to:
+- View console logs
+- Inspect network requests
+- Debug JavaScript
+- Analyze performance
+
+### VS Code Debugging
+
+Create `.vscode/launch.json`:
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "Launch Chrome",
+      "url": "http://localhost:3000",
+      "webRoot": "${workspaceFolder}/src"
+    }
+  ]
+}
+```
+
+### Network Debugging
+
+Monitor API calls:
+
+```javascript
+// Check axios interceptors in src/modules/login/infrastructure/api/apiClient.js
+apiClient.interceptors.request.use((config) => {
+  console.log('Request:', config);
+  return config;
+});
+```
+
+## Common Development Tasks
+
+### Adding a New Module
+
+<Steps>
+  <Step title="Create module structure">
+    ```bash
+    mkdir -p src/modules/my-module/{application,domain,infrastructure,presentation}
+    ```
+  </Step>
+
+  <Step title="Follow Clean Architecture layers">
+    - `domain/` - Entities and business rules
+    - `application/` - Use cases and hooks
+    - `infrastructure/` - External dependencies
+    - `presentation/` - UI components
+  </Step>
+
+  <Step title="Register routes">
+    Add routes in `src/App.jsx`
+  </Step>
+</Steps>
+
+### Testing API Endpoints
+
+Use tools like:
+- **Postman** - Full-featured API client
+- **Thunder Client** - VS Code extension
+- **curl** - Command line tool
+
+```bash
+# Example API request
+curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"id_institucional": "80123456"}'
+```
+
+## Environment-Specific Behavior
+
+### Development
+- Detailed error messages
+- Source maps enabled
+- No code minification
+- Fast builds
+
+### Production
+- Generic error messages
+- Minified code
+- Tree-shaking enabled
+- Optimized assets
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Port 3000 already in use">
+    Change the port in `vite.config.js`:
+    ```javascript
+    server: {
+      port: 3001
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Module not found errors">
+    Clear cache and reinstall:
+    ```bash
+    rm -rf node_modules package-lock.json
+    npm install
+    ```
+  </Accordion>
+
+  <Accordion title="HMR not working">
+    1. Check browser console for errors
+    2. Restart the dev server
+    3. Clear browser cache
+    4. Check for syntax errors in code
+  </Accordion>
+
+  <Accordion title="Supabase connection errors">
+    Verify:
+    1. `.env` file has correct Supabase credentials
+    2. Supabase project is active
+    3. Network connectivity
+    4. Check `src/shared/lib/supabaseClient.js`
+  </Accordion>
+</AccordionGroup>
+
+## Performance Monitoring
+
+### Build Analysis
+
+Analyze bundle size:
+
+```bash
+npm run build
+# Check dist/ folder size
+du -sh dist/
+```
+
+### Development Performance
+
+- Use React DevTools Profiler
+- Monitor network requests in DevTools
+- Check Vite's build output for warnings
+
+## Next Steps
+
+- Learn about [testing](/development/testing)
+- Understand the [frontend architecture](/development/frontend-architecture)
+- Review [code standards](/development/code-standards)

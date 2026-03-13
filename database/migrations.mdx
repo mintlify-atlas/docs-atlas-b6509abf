@@ -1,0 +1,642 @@
+---
+title: 'Database Migrations'
+description: 'Schema version management and migration strategies'
+icon: 'code-branch'
+---
+
+## Overview
+
+Database migrations track changes to the schema over time, allowing you to version control your database structure and apply updates consistently across environments.
+
+<CardGroup cols={2}>
+  <Card title="Version Control" icon="git">
+    Track schema changes alongside code
+  </Card>
+  <Card title="Reproducible" icon="repeat">
+    Apply same changes to dev, staging, production
+  </Card>
+  <Card title="Rollback Support" icon="rotate-left">
+    Undo changes if needed
+  </Card>
+  <Card title="Team Collaboration" icon="users">
+    Share schema changes across team
+  </Card>
+</CardGroup>
+
+---
+
+## Migration Files Structure
+
+The database schema is split into 9 numbered files:
+
+```
+database/supabase/
+├── 01_usuarios.sql          # Users table and ENUM type
+├── 02_roles.sql             # Roles and user-role mapping
+├── 03_info_estudiante.sql   # Student information
+├── 04_info_empleado.sql     # Employee information
+├── 05_info_contratista.sql  # Contractor information
+├── 06_triggers_roles.sql    # Automatic role management
+├── 07_fallas.sql            # Failure tracking system
+├── 08_rls_policies.sql      # Row Level Security policies
+└── 09_semestres.sql         # Academic semesters
+```
+
+<Note>
+  Files are numbered to ensure correct execution order. Dependencies are resolved by sequential execution.
+</Note>
+
+---
+
+## Migration Strategies
+
+### Strategy 1: Manual Execution
+
+**Best for:** Initial setup, small projects, direct database access
+
+<Steps>
+  <Step title="Execute in Order">
+    Run each file sequentially in the Supabase SQL Editor:
+    ```sql
+    -- File 01
+    -- File 02
+    -- ...
+    ```
+  </Step>
+  
+  <Step title="Track Manually">
+    Keep a changelog of which files have been executed:
+    ```markdown
+    ## 2026-03-13
+    - Executed 01_usuarios.sql through 09_semestres.sql
+    - Initial database setup complete
+    ```
+  </Step>
+</Steps>
+
+**Pros:**
+- Simple and straightforward
+- No additional tools required
+- Good for understanding schema
+
+**Cons:**
+- Manual tracking required
+- No automatic versioning
+- Error-prone for teams
+
+---
+
+### Strategy 2: Supabase CLI Migrations
+
+**Best for:** Production environments, team collaboration, CI/CD
+
+<Steps>
+  <Step title="Install Supabase CLI">
+    ```bash
+    npm install -g supabase
+    ```
+  </Step>
+  
+  <Step title="Initialize Supabase">
+    ```bash
+    supabase init
+    ```
+    
+    Creates `supabase/` directory with migrations folder.
+  </Step>
+  
+  <Step title="Create Migration">
+    ```bash
+    supabase migration new initial_schema
+    ```
+    
+    Creates: `supabase/migrations/20260313000000_initial_schema.sql`
+  </Step>
+  
+  <Step title="Copy SQL Content">
+    Concatenate all numbered files:
+    ```bash
+    cd database/supabase/
+    cat 01_usuarios.sql 02_roles.sql 03_info_estudiante.sql \
+        04_info_empleado.sql 05_info_contratista.sql \
+        06_triggers_roles.sql 07_fallas.sql \
+        08_rls_policies.sql 09_semestres.sql \
+        > ../../supabase/migrations/20260313000000_initial_schema.sql
+    ```
+  </Step>
+  
+  <Step title="Apply Migration">
+    ```bash
+    supabase db push
+    ```
+    
+    Applies migration to linked project.
+  </Step>
+</Steps>
+
+**Pros:**
+- Automatic version tracking
+- Consistent across environments
+- Built-in rollback support
+- Team-friendly
+
+**Cons:**
+- Requires CLI installation
+- Learning curve for new users
+
+---
+
+### Strategy 3: Git-Based Versioning
+
+**Best for:** Any project size, works with both strategies above
+
+<Steps>
+  <Step title="Commit Schema Files">
+    ```bash
+    git add database/supabase/*.sql
+    git commit -m "Initial database schema"
+    git tag v1.0-schema
+    ```
+  </Step>
+  
+  <Step title="Document in README">
+    ```markdown
+    # Database Schema
+    
+    Current version: v1.0
+    Last updated: 2026-03-13
+    
+    ## Migration History
+    
+    - v1.0 (2026-03-13): Initial schema with 9 tables
+    ```
+  </Step>
+  
+  <Step title="Tag Schema Versions">
+    For each schema change:
+    ```bash
+    git add database/supabase/10_new_feature.sql
+    git commit -m "Add new feature table"
+    git tag v1.1-schema
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Making Schema Changes
+
+### Adding a New Column
+
+<Steps>
+  <Step title="Create Migration File">
+    ```bash
+    supabase migration new add_usuario_email
+    ```
+    
+    Or create manually:
+    ```bash
+    touch database/supabase/10_add_usuario_email.sql
+    ```
+  </Step>
+  
+  <Step title="Write ALTER Statement">
+    ```sql
+    -- 10_add_usuario_email.sql
+    
+    ALTER TABLE usuarios
+    ADD COLUMN email VARCHAR(255);
+    
+    CREATE INDEX idx_usuarios_email ON usuarios(email);
+    
+    COMMENT ON COLUMN usuarios.email IS 'Email de contacto del usuario';
+    ```
+  </Step>
+  
+  <Step title="Test in Development">
+    ```bash
+    supabase db push --local
+    ```
+  </Step>
+  
+  <Step title="Apply to Production">
+    ```bash
+    supabase db push
+    ```
+  </Step>
+</Steps>
+
+---
+
+### Adding a New Table
+
+```sql
+-- 11_add_visitantes.sql
+
+CREATE TABLE visitantes (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    documento_identidad VARCHAR(20) NOT NULL UNIQUE,
+    nombre_completo VARCHAR(150) NOT NULL,
+    empresa VARCHAR(200),
+    fecha_ingreso TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    fecha_salida TIMESTAMPTZ,
+    usuario_autoriza VARCHAR(20) NOT NULL REFERENCES usuarios(id_institucional)
+);
+
+CREATE INDEX idx_visitantes_documento ON visitantes(documento_identidad);
+CREATE INDEX idx_visitantes_fecha ON visitantes(fecha_ingreso DESC);
+
+-- Enable RLS
+ALTER TABLE visitantes ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "visitantes: lectura pública"
+  ON visitantes FOR SELECT
+  USING (true);
+
+CREATE POLICY "visitantes: insertar"
+  ON visitantes FOR INSERT
+  WITH CHECK (true);
+```
+
+---
+
+### Modifying Existing Data
+
+<Warning>
+  Always include both UP (apply) and DOWN (rollback) logic for data migrations.
+</Warning>
+
+```sql
+-- 12_update_role_descriptions.sql
+
+-- UP: Update descriptions
+UPDATE roles SET descripcion = 'Persona matriculada en un programa académico de la UCC'
+WHERE nombre_rol = 'Estudiante';
+
+UPDATE roles SET descripcion = 'Trabajador con contrato laboral directo con la UCC'
+WHERE nombre_rol = 'Empleado';
+
+-- To rollback, create 12_rollback.sql:
+-- UPDATE roles SET descripcion = 'Usuario matriculado en un programa académico'
+-- WHERE nombre_rol = 'Estudiante';
+-- ...
+```
+
+---
+
+## Semester-Based Migration Pattern
+
+### Option A: Data Reload (Current Approach)
+
+<Info>
+  The current system reloads data each semester without schema changes.
+</Info>
+
+```sql
+-- At start of semester 2026-2
+
+-- 1. Mark old semester inactive
+UPDATE semestres SET activo = false WHERE nombre = '2026-1';
+
+-- 2. Insert new semester
+INSERT INTO semestres (nombre, fecha_inicio, fecha_fin)
+VALUES ('2026-2', '2026-07-14', '2026-12-08');
+
+-- 3. Clear old student data (triggers revoke roles)
+DELETE FROM info_estudiante;
+
+-- 4. Load new student CSV
+-- (handled by application, triggers assign roles)
+```
+
+**No migration needed** - this is a data operation, not a schema change.
+
+---
+
+### Option B: Archival Tables (Alternative)
+
+If you want to preserve historical data:
+
+```sql
+-- 13_add_semester_archival.sql
+
+CREATE TABLE info_estudiante_historico (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_institucional VARCHAR(20) NOT NULL,
+    programa VARCHAR(150) NOT NULL,
+    semestre VARCHAR(10) NOT NULL,
+    fecha_archivado TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Function to archive before deletion
+CREATE OR REPLACE FUNCTION fn_archivar_estudiante()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    INSERT INTO info_estudiante_historico (id_institucional, programa, semestre)
+    SELECT 
+        OLD.id_institucional, 
+        OLD.programa,
+        (SELECT nombre FROM semestres WHERE activo = true)
+    ;
+    RETURN OLD;
+END;
+$$;
+
+CREATE TRIGGER trg_archivar_estudiante
+    BEFORE DELETE ON info_estudiante
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_archivar_estudiante();
+```
+
+---
+
+## Rollback Procedures
+
+### Manual Rollback
+
+<Steps>
+  <Step title="Identify Changes">
+    Review the migration file to understand what was changed.
+  </Step>
+  
+  <Step title="Write Reverse SQL">
+    Create a rollback script:
+    ```sql
+    -- rollback_10_add_usuario_email.sql
+    
+    DROP INDEX IF EXISTS idx_usuarios_email;
+    ALTER TABLE usuarios DROP COLUMN IF EXISTS email;
+    ```
+  </Step>
+  
+  <Step title="Execute Rollback">
+    Run the rollback script in SQL Editor or via CLI.
+  </Step>
+</Steps>
+
+---
+
+### Supabase CLI Rollback
+
+```bash
+# Rollback last migration
+supabase db reset
+
+# Rollback to specific migration
+supabase db reset --to 20260313000000
+```
+
+<Warning>
+  `supabase db reset` drops the database and reapplies migrations from scratch. **All data will be lost.**
+</Warning>
+
+---
+
+## Migration Best Practices
+
+<AccordionGroup>
+  <Accordion title="1. Always Test Locally First">
+    ```bash
+    # Start local Supabase
+    supabase start
+    
+    # Test migration
+    supabase db push --local
+    
+    # If OK, push to prod
+    supabase db push
+    ```
+  </Accordion>
+  
+  <Accordion title="2. Use Transactions for Multi-Step Changes">
+    ```sql
+    BEGIN;
+    
+    ALTER TABLE usuarios ADD COLUMN email VARCHAR(255);
+    UPDATE usuarios SET email = 'default@ucc.edu.co';
+    ALTER TABLE usuarios ALTER COLUMN email SET NOT NULL;
+    
+    COMMIT;
+    ```
+    
+    If any step fails, all changes are rolled back.
+  </Accordion>
+  
+  <Accordion title="3. Include Comments in Migration Files">
+    ```sql
+    -- ============================================================
+    -- Migration: Add email column to usuarios
+    -- Date: 2026-03-13
+    -- Author: Database Team
+    -- Reason: Enable email notifications feature
+    -- ============================================================
+    
+    ALTER TABLE usuarios ADD COLUMN email VARCHAR(255);
+    ```
+  </Accordion>
+  
+  <Accordion title="4. Never Edit Applied Migrations">
+    Once a migration is applied to production:
+    - ❌ Do not edit the file
+    - ✅ Create a new migration to make changes
+    
+    Example:
+    ```sql
+    -- WRONG: Editing 10_add_usuario_email.sql
+    
+    -- RIGHT: Create 11_modify_usuario_email.sql
+    ALTER TABLE usuarios ALTER COLUMN email TYPE TEXT;
+    ```
+  </Accordion>
+  
+  <Accordion title="5. Keep Migrations Small and Focused">
+    Each migration should:
+    - Address one feature or fix
+    - Be independently deployable
+    - Have a clear purpose
+    
+    ✅ Good:
+    - `10_add_usuario_email.sql`
+    - `11_create_visitantes_table.sql`
+    
+    ❌ Bad:
+    - `10_multiple_changes.sql` (adds email, creates visitantes, modifies roles)
+  </Accordion>
+  
+  <Accordion title="6. Backup Before Major Changes">
+    ```bash
+    # Create backup before migration
+    supabase db dump > backup-$(date +%Y%m%d).sql
+    
+    # Apply migration
+    supabase db push
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Version Tracking
+
+### Create a Schema Version Table
+
+```sql
+-- 14_add_schema_version.sql
+
+CREATE TABLE schema_version (
+    version VARCHAR(10) PRIMARY KEY,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    description TEXT
+);
+
+INSERT INTO schema_version (version, description) VALUES
+    ('1.0', 'Initial schema with 9 tables');
+```
+
+### Update on Each Migration
+
+```sql
+-- 15_add_visitantes.sql
+
+CREATE TABLE visitantes (...);
+
+INSERT INTO schema_version (version, description) VALUES
+    ('1.1', 'Added visitantes table for guest tracking');
+```
+
+### Query Current Version
+
+```sql
+SELECT version, applied_at, description
+FROM schema_version
+ORDER BY applied_at DESC
+LIMIT 1;
+```
+
+---
+
+## Migration Checklist
+
+Before applying a migration:
+
+<Steps>
+  <Step title="Pre-Migration">
+    - [ ] Migration file reviewed by team
+    - [ ] Tested in local environment
+    - [ ] Backup created
+    - [ ] Downtime window scheduled (if needed)
+    - [ ] Rollback plan documented
+  </Step>
+  
+  <Step title="Execution">
+    - [ ] Migration applied to staging
+    - [ ] Smoke tests passed in staging
+    - [ ] Migration applied to production
+    - [ ] Verification queries run
+  </Step>
+  
+  <Step title="Post-Migration">
+    - [ ] Application tested
+    - [ ] Logs monitored for errors
+    - [ ] Performance metrics checked
+    - [ ] Migration documented in changelog
+    - [ ] Team notified of completion
+  </Step>
+</Steps>
+
+---
+
+## Troubleshooting Migrations
+
+<AccordionGroup>
+  <Accordion title="Migration fails halfway">
+    **Cause:** Syntax error or constraint violation.
+    
+    **Solution:**
+    1. Check error message in CLI or dashboard
+    2. Fix the SQL syntax
+    3. Manually revert partial changes if not in transaction
+    4. Re-apply corrected migration
+  </Accordion>
+  
+  <Accordion title="Migration already applied">
+    **Cause:** Running same migration twice.
+    
+    **Solution:**
+    - Supabase CLI tracks applied migrations automatically
+    - Manual execution: Check schema_version table
+    - If already applied, skip or modify to be idempotent:
+      ```sql
+      ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email VARCHAR(255);
+      ```
+  </Accordion>
+  
+  <Accordion title="Foreign key constraint prevents change">
+    **Cause:** Existing data violates new constraint.
+    
+    **Solution:**
+    1. Analyze existing data:
+       ```sql
+       SELECT * FROM child_table 
+       WHERE parent_id NOT IN (SELECT id FROM parent_table);
+       ```
+    2. Clean or migrate data first
+    3. Then apply constraint
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## CI/CD Integration
+
+### GitHub Actions Example
+
+```yaml
+# .github/workflows/database-migration.yml
+
+name: Database Migration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'database/supabase/*.sql'
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Supabase CLI
+        run: npm install -g supabase
+      
+      - name: Link to project
+        run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      
+      - name: Push migration
+        run: supabase db push
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Load Data" icon="upload" href="/database/seed-data">
+    Import initial and test data
+  </Card>
+  <Card title="Backup Strategy" icon="floppy-disk" href="/database/installation">
+    Set up automated backups
+  </Card>
+  <Card title="Monitor Changes" icon="chart-line" href="/database/tables">
+    Track schema evolution
+  </Card>
+  <Card title="Test Triggers" icon="flask" href="/database/triggers">
+    Verify automated behaviors
+  </Card>
+</CardGroup>

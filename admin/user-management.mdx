@@ -1,0 +1,226 @@
+---
+title: User Management
+description: Search, view, and manage user accounts
+---
+
+# User Management
+
+The user management interface allows administrators to search for users, review their status, and perform administrative actions.
+
+## User Search
+
+### Search Options
+
+<Tabs>
+  <Tab title="By ID">
+    **Institutional ID Search**:
+    ```
+    Search: [80123456] [BUSCAR]
+    ```
+
+    **SQL Query**:
+    ```sql
+    SELECT * FROM usuarios WHERE id_institucional = '80123456';
+    ```
+
+    **Best For**: When you know the exact ID
+  </Tab>
+
+  <Tab title="By Name">
+    **Name Search** (partial match):
+    ```
+    Search: [Juan Perez] [BUSCAR]
+    ```
+
+    **SQL Query**:
+    ```sql
+    SELECT * FROM usuarios 
+    WHERE nombre_completo ILIKE '%Juan%Perez%';
+    ```
+
+    **Best For**: When ID is unknown
+  </Tab>
+
+  <Tab title="By Document">
+    **Cédula Search**:
+    ```
+    Search: [1234567890] [BUSCAR]
+    ```
+
+    **SQL Query**:
+    ```sql
+    SELECT * FROM usuarios WHERE documento_identidad = '1234567890';
+    ```
+
+    **Best For**: When user only has cédula
+  </Tab>
+</Tabs>
+
+## User Profile View
+
+When you search for a user, the complete profile displays:
+
+```
+┌───────────────────────────────────────────────────┐
+│  PERFIL DE USUARIO                                    │
+├───────────────────────────────────────────────────┤
+│  Nombre: Juan Pérez Gómez                             │
+│  ID Institucional: 80123456                           │
+│  Cédula: 1234567890                                   │
+│  Estado: BLOQUEADO 🔴                                │
+│  Fallas: 4/4                                          │
+├───────────────────────────────────────────────────┤
+│  ROLES                                                │
+│  📚 Estudiante - Ingeniería de Sistemas            │
+├───────────────────────────────────────────────────┤
+│  HISTORIAL DE FALLAS                                  │
+│  1. 2026-03-13 14:30 - Olvido                         │
+│  2. 2026-03-10 08:15 - Olvido                         │
+│  3. 2026-03-05 09:00 - Olvido                         │
+│  4. 2026-03-01 07:45 - Olvido                         │
+├───────────────────────────────────────────────────┤
+│  [ DESBLOQUEAR USUARIO ]  [ EXPORTAR PERFIL ]          │
+└───────────────────────────────────────────────────┘
+```
+
+## Unblocking Users
+
+<Steps>
+  <Step title="Review User Profile">
+    Examine:
+    - Current status (bloqueado)
+    - Total failures (4/4 or perdida)
+    - Failure history with dates
+    - User roles and programs
+  </Step>
+
+  <Step title="Click Desbloquear">
+    Click the "Desbloquear Usuario" button.
+  </Step>
+
+  <Step title="Enter Justification">
+    **Modal appears**:
+    ```
+    ┌────────────────────────────────────┐
+    │  DESBLOQUEAR USUARIO             │
+    ├────────────────────────────────────┤
+    │  Usuario: Juan Pérez              │
+    │  Fallas: 4/4                     │
+    ├────────────────────────────────────┤
+    │  Justificación (obligatorio):    │
+    │  [──────────────────────────] │
+    │  [                              ]│
+    │  [                              ]│
+    │  [                              ]│
+    │                                  │
+    │  Mínimo 10 caracteres             │
+    ├────────────────────────────────────┤
+    │  [DESBLOQUEAR] [CANCELAR]        │
+    └────────────────────────────────────┘
+    ```
+
+    **Example Justifications**:
+    - "Usuario presentó nueva TIC - reposición completada"
+    - "Desbloqueo aprobado por Director - compromiso de responsabilidad"
+    - "Error de sistema corregido - fallas removidas"
+  </Step>
+
+  <Step title="Confirm Unblock">
+    System executes:
+    ```sql
+    UPDATE usuarios 
+    SET acceso = 'activo', 
+        total_fallas = 0
+    WHERE id_institucional = '80123456';
+    
+    -- Log audit trail
+    INSERT INTO audit_desbloqueos (user_id, admin_id, justificacion)
+    VALUES ('80123456', '80ADMIN1', 'Usuario presentó nueva TIC');
+    ```
+  </Step>
+
+  <Step title="Confirmation Message">
+    ```
+    ✅ Usuario desbloqueado exitosamente
+    
+    Estado: ACTIVO
+    Fallas: 0/4
+    ```
+  </Step>
+</Steps>
+
+## Batch Operations
+
+### Unblock Multiple Users
+
+<Warning>
+  Use with caution - typically for semester resets only
+</Warning>
+
+```sql
+-- Unblock all users (semester reset)
+UPDATE usuarios 
+SET acceso = 'activo', 
+    total_fallas = 0
+WHERE acceso = 'bloqueado';
+```
+
+### Export User List
+
+Export filtered users to Excel:
+```sql
+-- All blocked users
+SELECT 
+    u.id_institucional,
+    u.nombre_completo,
+    u.documento_identidad,
+    u.total_fallas,
+    MAX(f.fecha_hora) as ultima_falla
+FROM usuarios u
+LEFT JOIN fallas f ON u.id_institucional = f.id_institucional
+WHERE u.acceso = 'bloqueado'
+GROUP BY u.id_institucional, u.nombre_completo, u.documento_identidad, u.total_fallas;
+```
+
+## Advanced Filters
+
+<Tabs>
+  <Tab title="By Status">
+    Filter dropdown:
+    - All users
+    - Active only
+    - Blocked only
+  </Tab>
+
+  <Tab title="By Failure Count">
+    - 0 failures
+    - 1 failure
+    - 2 failures
+    - 3 failures (at risk)
+    - 4+ failures (blocked)
+  </Tab>
+
+  <Tab title="By Role">
+    - Students only
+    - Employees only
+    - Contractors only
+    - Multi-role users
+  </Tab>
+
+  <Tab title="By Program/Dept">
+    - Filter students by program
+    - Filter employees by department
+    - Filter contractors by company
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Generate Reports" href="/admin/reports">
+    Create user reports
+  </Card>
+  <Card title="Semester Management" href="/admin/semester-management">
+    Manage semester data
+  </Card>
+</CardGroup>

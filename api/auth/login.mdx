@@ -1,0 +1,156 @@
+---
+title: 'Login - Validate Institutional ID'
+description: 'Validate institutional ID and authenticate user'
+---
+
+## POST /api/auth/login
+
+Validates a user's institutional ID and returns their basic profile information if they exist in the system and are not blocked.
+
+### Request Body
+
+<ParamField body="idInstitucional" type="string" required>
+  The institutional ID to validate. Must contain only numeric characters.
+  
+  **Validation Rules:**
+  - Cannot be empty or whitespace
+  - Must contain only digits (0-9)
+  - Must exist in the `usuarios` table
+</ParamField>
+
+### Request Example
+
+```json
+{
+  "idInstitucional": "123456789"
+}
+```
+
+### Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates whether the validation was successful
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  User object returned on successful validation
+  
+  <Expandable title="User object properties">
+    <ResponseField name="id" type="integer">
+      Database primary key
+    </ResponseField>
+    
+    <ResponseField name="idInstitucional" type="string">
+      Institutional ID
+    </ResponseField>
+    
+    <ResponseField name="documentoIdentidad" type="string">
+      National identity document number
+    </ResponseField>
+    
+    <ResponseField name="nombreCompleto" type="string">
+      Full name of the user
+    </ResponseField>
+    
+    <ResponseField name="acceso" type="string">
+      Access status: `"activo"` or `"bloqueado"`
+    </ResponseField>
+    
+    <ResponseField name="totalFallas" type="integer">
+      Total number of access failures (0-4)
+      
+      - When `totalFallas` reaches 4, the user is automatically blocked
+      - `totalFallas >= 3` indicates the user is at risk
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message returned on validation failure
+</ResponseField>
+
+### Response Examples
+
+**Success Response (200 OK)**
+
+```json
+{
+  "success": true,
+  "user": {
+    "id": 42,
+    "idInstitucional": "123456789",
+    "documentoIdentidad": "1234567890",
+    "nombreCompleto": "Juan Pérez García",
+    "acceso": "activo",
+    "totalFallas": 1
+  }
+}
+```
+
+**Error Response - Empty ID (400 Bad Request)**
+
+```json
+{
+  "success": false,
+  "error": "El ID institucional es requerido"
+}
+```
+
+**Error Response - Invalid Format (400 Bad Request)**
+
+```json
+{
+  "success": false,
+  "error": "El ID institucional debe contener solo números"
+}
+```
+
+**Error Response - Not Found (404 Not Found)**
+
+```json
+{
+  "success": false,
+  "error": "ID institucional no encontrado"
+}
+```
+
+**Error Response - Blocked User (403 Forbidden)**
+
+```json
+{
+  "success": false,
+  "error": "Tu acceso está bloqueado. Comunícate con la administración."
+}
+```
+
+### Error Codes
+
+| Status Code | Description |
+|------------|-------------|
+| 200 | Validation successful |
+| 400 | Invalid request (empty or non-numeric ID) |
+| 403 | User is blocked |
+| 404 | Institutional ID not found |
+| 500 | Internal server error |
+
+<Note>
+  Users are automatically blocked when they accumulate 4 access failures. Blocked users cannot log in and must contact administration to be unblocked.
+</Note>
+
+<Warning>
+  This endpoint does not create sessions or return authentication tokens. It only validates the institutional ID. Session management should be implemented separately.
+</Warning>
+
+### Implementation Details
+
+**Source:** `src/modules/login/domain/usecases/ValidateInstitutionalIdUseCase.js:15`
+
+**Repository:** `src/modules/login/infrastructure/repositories/AuthRepositoryImpl.js:11`
+
+The validation process:
+
+1. Validates ID format (non-empty, numeric)
+2. Queries the `usuarios` table in Supabase
+3. Checks if user exists
+4. Verifies user is not blocked (`acceso !== 'bloqueado'`)
+5. Returns user entity with access status and failure count

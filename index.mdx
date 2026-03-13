@@ -1,97 +1,138 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Welcome to UCC Control de Acceso"
+description: "Sistema web de control de acceso para gestionar el ingreso contingente de usuarios sin carnet en la Universidad Cooperativa de Colombia"
 ---
 
-## Setting up
+## Overview
 
-Get your documentation site up and running in minutes.
+UCC Control de Acceso is a comprehensive access control system designed specifically for Universidad Cooperativa de Colombia. The system manages contingent entry for users who do not have their physical ID card, tracking failures, enforcing blocking rules, and providing administrators with real-time insights and reporting capabilities.
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
+<CardGroup cols={2}>
   <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
+    title="Quick Start"
+    icon="rocket"
+    href="/quickstart"
   >
-    Edit your docs locally and preview them in real time.
+    Get up and running with UCC Control de Acceso in minutes
   </Card>
   <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
+    title="Architecture"
+    icon="sitemap"
+    href="/architecture"
   >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+    Understand the system architecture and design principles
   </Card>
   <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
+    title="User Guide"
+    icon="user"
+    href="/user-guide/student-flow"
   >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
-
-## Create beautiful pages
-
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+    Learn how to use the system as a student, employee, or contractor
   </Card>
   <Card
-    title="Code samples"
+    title="Admin Panel"
+    icon="gauge"
+    href="/admin/overview"
+  >
+    Explore the administrative dashboard and management tools
+  </Card>
+</CardGroup>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card
+    title="ID-Based Authentication"
+    icon="id-card"
+    href="/features/user-authentication"
+  >
+    Simple login using institutional ID for quick access verification
+  </Card>
+  <Card
+    title="Multi-Role System"
+    icon="users"
+    href="/features/multi-role-system"
+  >
+    Support for students, employees, and contractors with role-specific data
+  </Card>
+  <Card
+    title="Failure Tracking"
+    icon="triangle-exclamation"
+    href="/features/failure-tracking"
+  >
+    Automatic tracking of card issues (forgotten, lost, stolen)
+  </Card>
+  <Card
+    title="Blocking System"
+    icon="ban"
+    href="/features/blocking-system"
+  >
+    Automated blocking after 4 failures with admin unblock capabilities
+  </Card>
+</CardGroup>
+
+## For Administrators
+
+<CardGroup cols={2}>
+  <Card
+    title="Real-Time Dashboard"
+    icon="chart-line"
+    href="/admin/dashboard"
+  >
+    Monitor system statistics and user status in real-time
+  </Card>
+  <Card
+    title="User Management"
+    icon="users-gear"
+    href="/admin/user-management"
+  >
+    Search, view, and manage user accounts and access status
+  </Card>
+  <Card
+    title="Reports & Export"
+    icon="file-excel"
+    href="/admin/reports"
+  >
+    Generate and export reports in Excel format
+  </Card>
+  <Card
+    title="Semester Management"
+    icon="calendar"
+    href="/admin/semester-management"
+  >
+    Bulk upload CSV data and manage semester transitions
+  </Card>
+</CardGroup>
+
+## Technical Documentation
+
+<CardGroup cols={2}>
+  <Card
+    title="Database Schema"
+    icon="database"
+    href="/database/overview"
+  >
+    Explore the PostgreSQL/Supabase database structure
+  </Card>
+  <Card
+    title="API Reference"
     icon="code"
-    href="/essentials/code"
+    href="/api/auth/login"
   >
-    Add sample code to demonstrate how to use your product.
+    Complete API documentation for developers
   </Card>
   <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
+    title="Frontend Architecture"
+    icon="react"
+    href="/development/frontend-architecture"
   >
-    Display images and other media.
+    React application structure with Clean Architecture
   </Card>
   <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
+    title="Contributing"
+    icon="code-branch"
+    href="/development/contributing"
   >
-    Write once and reuse across your docs.
+    Guidelines for contributing to the project
   </Card>
-</Columns>
-
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+</CardGroup>

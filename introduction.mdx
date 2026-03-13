@@ -1,0 +1,115 @@
+---
+title: Introduction
+description: Welcome to the UCC Control de Acceso documentation
+---
+
+# Sistema de Control de Acceso UCC
+
+Welcome to the comprehensive documentation for the **Universidad Cooperativa de Colombia (UCC)** Access Control System.
+
+## What is UCC Control de Acceso?
+
+This is a web-based Progressive Web Application (PWA) designed to manage **contingent entry** for users who **do not have their physical ID card** (TIC - Tarjeta de Identificación Cooperativista) at UCC campus entrances.
+
+<Warning>
+  **Important**: This application is ONLY used when users do NOT carry their physical ID card. It does NOT register normal entries with physical credentials.
+</Warning>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Simple ID-Based Login" icon="fingerprint">
+    Quick authentication using unique institutional ID numbers
+  </Card>
+  <Card title="Multi-Role Support" icon="users">
+    Handle Students, Employees, and Contractors with overlapping roles
+  </Card>
+  <Card title="Automatic Blocking" icon="ban">
+    Intelligent failure tracking with automatic blocking at 4 incidents
+  </Card>
+  <Card title="Admin Dashboard" icon="chart-line">
+    Comprehensive metrics, user management, and reporting tools
+  </Card>
+  <Card title="Excel Reports" icon="file-excel">
+    Monthly reports exportable to Excel for analysis
+  </Card>
+  <Card title="CSV Bulk Upload" icon="upload">
+    Mass data loading at the start of each semester
+  </Card>
+</CardGroup>
+
+## How It Works
+
+The system follows a simple workflow:
+
+<Steps>
+  <Step title="User Arrives Without ID Card">
+    A student, employee, or contractor arrives at campus without their physical TIC card.
+  </Step>
+  <Step title="Enter Institutional ID">
+    The security guard or the user enters their institutional ID number (e.g., 80123456).
+  </Step>
+  <Step title="Select Reason">
+    The user selects why they don't have their card:
+    - **Olvido** (Forgot): Allows 3 incidents before blocking
+    - **Perdida** (Lost): Immediate blocking
+  </Step>
+  <Step title="System Response">
+    The system either grants access (with warning) or blocks the user and directs them to administration.
+  </Step>
+</Steps>
+
+## Target Users
+
+This system serves three main user groups:
+
+### Regular Users
+- **Students**: Enrolled in academic programs
+- **Employees**: Direct UCC staff members
+- **Contractors**: External service providers
+
+### Administrative Users
+- **Directors**: Full access to all features and reports
+- **Supervisors**: User management and unblocking capabilities
+- **Security Personnel**: Entry registration and basic queries
+
+## Design Philosophy
+
+<Info>
+  The system embodies UCC's institutional colors:
+  - **Blue (#003DA5)**: Trust, professionalism, security
+  - **Orange (#FF6B35)**: Energy, warmth, accessibility
+</Info>
+
+The interface is designed to be:
+- **Simple**: Quick authentication and decision-making
+- **Clear**: Obvious visual feedback on user status
+- **Responsive**: Works on desktops, tablets, and mobile devices
+- **Accessible**: Intuitive for security personnel with varying tech literacy
+
+## Technical Architecture
+
+The system is built using modern web technologies:
+
+- **Frontend**: React 18 with Vite, Tailwind CSS
+- **Backend**: Supabase (PostgreSQL)
+- **Architecture**: Clean Architecture with separation of concerns
+- **Security**: Row-Level Security (RLS) policies
+- **Real-time**: Automatic updates via triggers
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get started with the system in minutes
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/architecture">
+    Understand the technical design
+  </Card>
+  <Card title="User Guide" icon="book" href="/user-guide/student-flow">
+    Learn user workflows
+  </Card>
+  <Card title="Admin Panel" icon="gauge" href="/admin/overview">
+    Explore administrative features
+  </Card>
+</CardGroup>

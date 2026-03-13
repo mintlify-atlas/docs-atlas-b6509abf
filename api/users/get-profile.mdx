@@ -1,0 +1,163 @@
+---
+title: 'Get User Profile'
+description: 'Retrieve complete user profile with roles and failure history'
+---
+
+## GET /api/usuarios/:id
+
+Retrieves comprehensive profile data for a user, including their roles, role-specific information, and failure history.
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The institutional ID of the user
+</ParamField>
+
+### Response
+
+<ResponseField name="roles" type="array" required>
+  Array of role names assigned to the user
+  
+  Possible values: `"Estudiante"`, `"Empleado"`, `"Contratista"`
+  
+  A user can have multiple roles simultaneously.
+</ResponseField>
+
+<ResponseField name="infoEstudiante" type="object" nullable>
+  Student-specific information (only present if user has "Estudiante" role)
+  
+  <Expandable title="Student info properties">
+    <ResponseField name="programa" type="string">
+      Academic program name
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="infoEmpleado" type="object" nullable>
+  Employee-specific information (only present if user has "Empleado" role)
+  
+  <Expandable title="Employee info properties">
+    <ResponseField name="cargo" type="string">
+      Job title/position
+    </ResponseField>
+    
+    <ResponseField name="dependencia" type="string">
+      Department or organizational unit
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="infoContratista" type="object" nullable>
+  Contractor-specific information (only present if user has "Contratista" role)
+  
+  <Expandable title="Contractor info properties">
+    <ResponseField name="empresa" type="string">
+      Contracting company name
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="fallas" type="array" required>
+  Array of access failure records, ordered by most recent first
+  
+  <Expandable title="Failure object properties">
+    <ResponseField name="id" type="integer">
+      Failure record ID
+    </ResponseField>
+    
+    <ResponseField name="fecha_hora" type="string">
+      Timestamp in ISO 8601 format
+    </ResponseField>
+    
+    <ResponseField name="motivo" type="string">
+      Reason for the failure: `"olvido"` (forgot card) or `"perdida"` (lost card)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Response Example
+
+**Student with Failure History (200 OK)**
+
+```json
+{
+  "roles": ["Estudiante"],
+  "infoEstudiante": {
+    "programa": "Ingeniería de Sistemas"
+  },
+  "infoEmpleado": null,
+  "infoContratista": null,
+  "fallas": [
+    {
+      "id": 145,
+      "fecha_hora": "2026-03-13T08:30:00.000Z",
+      "motivo": "olvido"
+    },
+    {
+      "id": 89,
+      "fecha_hora": "2026-03-10T14:15:00.000Z",
+      "motivo": "olvido"
+    }
+  ]
+}
+```
+
+**Employee (200 OK)**
+
+```json
+{
+  "roles": ["Empleado"],
+  "infoEstudiante": null,
+  "infoEmpleado": {
+    "cargo": "Analista de Sistemas",
+    "dependencia": "TIC"
+  },
+  "infoContratista": null,
+  "fallas": []
+}
+```
+
+**User with Multiple Roles (200 OK)**
+
+```json
+{
+  "roles": ["Estudiante", "Empleado"],
+  "infoEstudiante": {
+    "programa": "Maestría en Ingeniería"
+  },
+  "infoEmpleado": {
+    "cargo": "Monitor Académico",
+    "dependencia": "Facultad de Ingeniería"
+  },
+  "infoContratista": null,
+  "fallas": []
+}
+```
+
+<Note>
+  The endpoint retrieves role-specific information in parallel for optimal performance, querying only the tables relevant to the user's roles.
+</Note>
+
+### Implementation Details
+
+**Source:** `src/modules/user-profile/infrastructure/repositories/UserProfileRepositoryImpl.js:5`
+
+The data loading process:
+
+1. Queries `usuario_roles` table joined with `roles` to get role names
+2. If errors occur, returns empty data structure
+3. Executes parallel queries for:
+   - `info_estudiante` (if user has "Estudiante" role)
+   - `info_empleado` (if user has "Empleado" role)
+   - `info_contratista` (if user has "Contratista" role)
+   - `fallas` table (failure history, ordered by most recent)
+4. Returns consolidated profile data
+
+### Database Tables
+
+- `usuario_roles` - Many-to-many relationship between users and roles
+- `roles` - Role definitions
+- `info_estudiante` - Student-specific data
+- `info_empleado` - Employee-specific data
+- `info_contratista` - Contractor-specific data
+- `fallas` - Access failure records

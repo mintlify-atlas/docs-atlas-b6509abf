@@ -1,0 +1,589 @@
+---
+title: 'Triggers and Functions'
+description: 'Database triggers and stored procedures for automated role management'
+icon: 'bolt'
+---
+
+## Overview
+
+The UCC Access Control System uses PostgreSQL triggers to automatically manage user roles and failure tracking. This eliminates manual role assignment and ensures data consistency.
+
+<CardGroup cols={2}>
+  <Card title="6 Triggers" icon="bolt">
+    Automatic role assignment and revocation
+  </Card>
+  <Card title="3 Functions" icon="function">
+    Reusable PL/pgSQL functions
+  </Card>
+  <Card title="Zero Manual Work" icon="robot">
+    Roles assigned automatically on CSV upload
+  </Card>
+  <Card title="Data Consistency" icon="check-double">
+    Triggers ensure roles match information tables
+  </Card>
+</CardGroup>
+
+---
+
+## Role Management Triggers
+
+### How Automatic Role Assignment Works
+
+<Steps>
+  <Step title="CSV Upload">
+    Admin uploads a CSV file to an information table (e.g., `info_estudiante`)
+  </Step>
+  
+  <Step title="INSERT Trigger Fires">
+    The `trg_asignar_rol_estudiante` trigger executes automatically
+  </Step>
+  
+  <Step title="Function Execution">
+    The `fn_asignar_rol('Estudiante')` function:
+    - Looks up the role ID for "Estudiante"
+    - Inserts a record into `usuario_roles`
+    - Uses `ON CONFLICT DO NOTHING` to prevent duplicates
+  </Step>
+  
+  <Step title="Role Assigned">
+    User now has the "Estudiante" role without any manual intervention
+  </Step>
+</Steps>
+
+---
+
+## Function: fn_asignar_rol()
+
+**Purpose:** Assigns a role to a user when a record is inserted into an information table.
+
+```sql
+CREATE OR REPLACE FUNCTION fn_asignar_rol()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_rol_id BIGINT;
+    v_nombre_rol TEXT := TG_ARGV[0];  -- Role name passed as argument
+BEGIN
+    -- Look up role ID in catalog
+    SELECT id INTO v_rol_id
+    FROM roles
+    WHERE nombre_rol = v_nombre_rol;
+
+    IF v_rol_id IS NULL THEN
+        RAISE EXCEPTION 'Rol "%" no encontrado en el catálogo de roles.', v_nombre_rol;
+    END IF;
+
+    -- Insert into usuario_roles. ON CONFLICT prevents errors
+    -- if user already has this role
+    INSERT INTO usuario_roles (id_institucional, rol_id)
+    VALUES (NEW.id_institucional, v_rol_id)
+    ON CONFLICT ON CONSTRAINT uq_usuario_rol DO NOTHING;
+
+    RETURN NEW;
+END;
+$$;
+```
+
+### Key Features
+
+<AccordionGroup>
+  <Accordion title="Generic Function">
+    Takes role name as parameter via `TG_ARGV[0]`, making it reusable for all three roles.
+  </Accordion>
+  
+  <Accordion title="Error Handling">
+    Raises exception if role name doesn't exist in the catalog.
+  </Accordion>
+  
+  <Accordion title="Idempotent">
+    `ON CONFLICT DO NOTHING` prevents duplicate role assignments.
+  </Accordion>
+  
+  <Accordion title="Efficient">
+    Single INSERT operation with minimal overhead.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Function: fn_revocar_rol()
+
+**Purpose:** Revokes a role from a user when a record is deleted from an information table.
+
+```sql
+CREATE OR REPLACE FUNCTION fn_revocar_rol()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_rol_id BIGINT;
+    v_nombre_rol TEXT := TG_ARGV[0];
+BEGIN
+    SELECT id INTO v_rol_id
+    FROM roles
+    WHERE nombre_rol = v_nombre_rol;
+
+    IF v_rol_id IS NULL THEN
+        RAISE EXCEPTION 'Rol "%" no encontrado en el catálogo de roles.', v_nombre_rol;
+    END IF;
+
+    DELETE FROM usuario_roles
+    WHERE id_institucional = OLD.id_institucional
+      AND rol_id = v_rol_id;
+
+    RETURN OLD;
+END;
+$$;
+```
+
+### Multi-Role Safety
+
+<Info>
+  The function only deletes the specific role. If a user has multiple roles, the others remain intact.
+</Info>
+
+**Example:**
+```sql
+-- User 80100003 has both Estudiante and Empleado roles
+-- Delete from info_estudiante
+DELETE FROM info_estudiante WHERE id_institucional = '80100003';
+-- Result: Estudiante role removed, Empleado role preserved
+```
+
+---
+
+## Student Role Triggers
+
+### trg_asignar_rol_estudiante
+
+**Fires:** AFTER INSERT on `info_estudiante`
+
+```sql
+CREATE TRIGGER trg_asignar_rol_estudiante
+    AFTER INSERT ON info_estudiante
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_asignar_rol('Estudiante');
+```
+
+**Behavior:**
+```sql
+-- This INSERT...
+INSERT INTO info_estudiante (id_institucional, programa)
+VALUES ('80100001', 'Ingeniería de Sistemas');
+
+-- ...automatically creates this:
+INSERT INTO usuario_roles (id_institucional, rol_id)
+VALUES ('80100001', 1);  -- 1 = Estudiante
+```
+
+---
+
+### trg_revocar_rol_estudiante
+
+**Fires:** AFTER DELETE on `info_estudiante`
+
+```sql
+CREATE TRIGGER trg_revocar_rol_estudiante
+    AFTER DELETE ON info_estudiante
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_revocar_rol('Estudiante');
+```
+
+**Behavior:**
+```sql
+-- This DELETE...
+DELETE FROM info_estudiante WHERE id_institucional = '80100001';
+
+-- ...automatically removes this:
+DELETE FROM usuario_roles 
+WHERE id_institucional = '80100001' AND rol_id = 1;
+```
+
+---
+
+## Employee Role Triggers
+
+### trg_asignar_rol_empleado
+
+**Fires:** AFTER INSERT on `info_empleado`
+
+```sql
+CREATE TRIGGER trg_asignar_rol_empleado
+    AFTER INSERT ON info_empleado
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_asignar_rol('Empleado');
+```
+
+---
+
+### trg_revocar_rol_empleado
+
+**Fires:** AFTER DELETE on `info_empleado`
+
+```sql
+CREATE TRIGGER trg_revocar_rol_empleado
+    AFTER DELETE ON info_empleado
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_revocar_rol('Empleado');
+```
+
+---
+
+## Contractor Role Triggers
+
+### trg_asignar_rol_contratista
+
+**Fires:** AFTER INSERT on `info_contratista`
+
+```sql
+CREATE TRIGGER trg_asignar_rol_contratista
+    AFTER INSERT ON info_contratista
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_asignar_rol('Contratista');
+```
+
+---
+
+### trg_revocar_rol_contratista
+
+**Fires:** AFTER DELETE on `info_contratista`
+
+```sql
+CREATE TRIGGER trg_revocar_rol_contratista
+    AFTER DELETE ON info_contratista
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_revocar_rol('Contratista');
+```
+
+---
+
+## Failure Tracking System
+
+### Function: fn_actualizar_fallas()
+
+**Purpose:** Recalculates total failures and automatically blocks users at 4 failures.
+
+```sql
+CREATE OR REPLACE FUNCTION fn_actualizar_fallas()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_id_inst   VARCHAR(20);
+    v_total     INT;
+BEGIN
+    -- Get id_institucional from affected record
+    v_id_inst := CASE WHEN TG_OP = 'DELETE' THEN OLD.id_institucional
+                                             ELSE NEW.id_institucional END;
+
+    -- Count current failures for this user
+    SELECT COUNT(*) INTO v_total
+    FROM fallas
+    WHERE id_institucional = v_id_inst;
+
+    -- Update counter and automatically block if reaching 4
+    UPDATE usuarios
+    SET total_fallas = v_total,
+        acceso       = CASE WHEN v_total >= 4 THEN 'bloqueado' ELSE acceso END
+    WHERE id_institucional = v_id_inst;
+
+    RETURN NULL;
+END;
+$$;
+```
+
+### Automatic Blocking Logic
+
+<Steps>
+  <Step title="Failure Recorded">
+    User registers a failure (forgot or lost TIC)
+    ```sql
+    INSERT INTO fallas (id_institucional, motivo)
+    VALUES ('80100001', 'olvido');
+    ```
+  </Step>
+  
+  <Step title="Trigger Fires">
+    `trg_fallas_insert` executes `fn_actualizar_fallas()`
+  </Step>
+  
+  <Step title="Count Failures">
+    Function counts total failures for this user
+    ```sql
+    SELECT COUNT(*) FROM fallas WHERE id_institucional = '80100001';
+    -- Result: 4
+    ```
+  </Step>
+  
+  <Step title="Update and Block">
+    Function updates `usuarios` table:
+    ```sql
+    UPDATE usuarios
+    SET total_fallas = 4,
+        acceso = 'bloqueado'
+    WHERE id_institucional = '80100001';
+    ```
+  </Step>
+</Steps>
+
+---
+
+### trg_fallas_insert
+
+**Fires:** AFTER INSERT on `fallas`
+
+```sql
+CREATE TRIGGER trg_fallas_insert
+    AFTER INSERT ON fallas
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_actualizar_fallas();
+```
+
+---
+
+### trg_fallas_delete
+
+**Fires:** AFTER DELETE on `fallas`
+
+```sql
+CREATE TRIGGER trg_fallas_delete
+    AFTER DELETE ON fallas
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_actualizar_fallas();
+```
+
+<Note>
+  This trigger allows correcting mistakenly recorded failures. Deleting a failure record automatically decrements the counter.
+</Note>
+
+---
+
+## Semester Data Reload
+
+<Warning>
+  **NEVER** use `TRUNCATE` to reload semester data. Use `DELETE FROM` instead.
+</Warning>
+
+### Why DELETE, Not TRUNCATE?
+
+| Operation | Triggers Fired? | Role Revocation? |
+|-----------|----------------|------------------|
+| `DELETE FROM info_estudiante;` | ✅ Yes (row-by-row) | ✅ Automatic |
+| `TRUNCATE info_estudiante;` | ❌ No | ❌ Roles remain |
+
+### Correct Semester Reload Procedure
+
+```sql
+-- Step 1: Delete old data (triggers fire, roles revoked)
+DELETE FROM info_estudiante;
+
+-- Step 2: Insert new semester data (triggers fire, roles assigned)
+INSERT INTO info_estudiante (id_institucional, programa)
+VALUES 
+    ('80100001', 'Ingeniería de Sistemas'),
+    ('80100002', 'Derecho'),
+    ('80100007', 'Medicina');
+```
+
+**Result:**
+- Students who didn't re-enroll lose "Estudiante" role
+- New students automatically get "Estudiante" role
+- Multi-role users keep other roles intact
+
+### Example Scenario
+
+<Steps>
+  <Step title="Semester 2026-1">
+    Juan (80100003) is enrolled in 10th semester:
+    - Record in `info_estudiante`
+    - Has "Estudiante" role
+    - Also has "Empleado" role
+  </Step>
+  
+  <Step title="Semester 2026-2 Begins">
+    Juan graduates and doesn't re-enroll:
+    ```sql
+    DELETE FROM info_estudiante;  -- Juan's record removed
+    -- Trigger revokes "Estudiante" role
+    ```
+  </Step>
+  
+  <Step title="Final State">
+    Juan:
+    - ❌ No record in `info_estudiante`
+    - ❌ No "Estudiante" role
+    - ✅ Still has record in `info_empleado`
+    - ✅ Still has "Empleado" role
+  </Step>
+</Steps>
+
+---
+
+## Trigger Verification
+
+### Test Role Assignment
+
+```sql
+-- Insert test user
+INSERT INTO usuarios (id_institucional, documento_identidad, nombre_completo)
+VALUES ('99999999', '1234567890', 'Usuario Prueba');
+
+-- Add student info (trigger should assign role)
+INSERT INTO info_estudiante (id_institucional, programa)
+VALUES ('99999999', 'Ingeniería de Prueba');
+
+-- Verify role was assigned
+SELECT 
+    ur.id_institucional,
+    r.nombre_rol
+FROM usuario_roles ur
+JOIN roles r ON r.id = ur.rol_id
+WHERE ur.id_institucional = '99999999';
+
+-- Expected result:
+-- id_institucional | nombre_rol
+-- -----------------|------------
+-- 99999999         | Estudiante
+```
+
+---
+
+### Test Role Revocation
+
+```sql
+-- Delete student info (trigger should revoke role)
+DELETE FROM info_estudiante WHERE id_institucional = '99999999';
+
+-- Verify role was revoked
+SELECT COUNT(*) FROM usuario_roles WHERE id_institucional = '99999999';
+
+-- Expected result: 0
+```
+
+---
+
+### Test Automatic Blocking
+
+```sql
+-- Insert 4 failures
+INSERT INTO fallas (id_institucional, motivo) VALUES 
+    ('99999999', 'olvido'),
+    ('99999999', 'olvido'),
+    ('99999999', 'olvido'),
+    ('99999999', 'olvido');
+
+-- Check user was blocked
+SELECT acceso, total_fallas 
+FROM usuarios 
+WHERE id_institucional = '99999999';
+
+-- Expected result:
+-- acceso    | total_fallas
+-- ----------|-------------
+-- bloqueado | 4
+```
+
+---
+
+### Test Multi-Role Assignment
+
+```sql
+-- Add both employee and contractor info
+INSERT INTO info_empleado (id_institucional, cargo, dependencia)
+VALUES ('99999999', 'Auxiliar', 'Sistemas');
+
+INSERT INTO info_contratista (id_institucional, empresa)
+VALUES ('99999999', 'Empresa Prueba S.A.S.');
+
+-- Verify both roles assigned
+SELECT 
+    ur.id_institucional,
+    STRING_AGG(r.nombre_rol, ', ' ORDER BY r.nombre_rol) AS roles
+FROM usuario_roles ur
+JOIN roles r ON r.id = ur.rol_id
+WHERE ur.id_institucional = '99999999'
+GROUP BY ur.id_institucional;
+
+-- Expected result:
+-- id_institucional | roles
+-- -----------------|------------------------
+-- 99999999         | Contratista, Empleado
+```
+
+---
+
+## Performance Considerations
+
+<AccordionGroup>
+  <Accordion title="Row-Level Triggers">
+    Triggers execute once per row (FOR EACH ROW), not once per statement.
+    
+    For bulk inserts of 1000 students:
+    - `fn_asignar_rol()` executes 1000 times
+    - Still efficient due to simple logic and indexes
+  </Accordion>
+  
+  <Accordion title="Index Usage">
+    All foreign key columns are indexed:
+    - `idx_usuario_roles_institucional`
+    - `idx_info_est_id_inst`
+    - `idx_info_emp_id_inst`
+    - `idx_info_con_id_inst`
+    
+    Ensures fast lookups in trigger functions.
+  </Accordion>
+  
+  <Accordion title="ON CONFLICT DO NOTHING">
+    Prevents expensive duplicate key checks in application code.
+    
+    Database handles idempotency efficiently at the constraint level.
+  </Accordion>
+  
+  <Accordion title="Minimal State Changes">
+    Triggers only update necessary fields:
+    - Role assignment: 1 INSERT
+    - Role revocation: 1 DELETE
+    - Failure update: 1 UPDATE
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Trigger Summary
+
+| Trigger Name | Table | Event | Function | Purpose |
+|--------------|-------|-------|----------|----------|
+| `trg_asignar_rol_estudiante` | info_estudiante | INSERT | fn_asignar_rol('Estudiante') | Assign student role |
+| `trg_revocar_rol_estudiante` | info_estudiante | DELETE | fn_revocar_rol('Estudiante') | Revoke student role |
+| `trg_asignar_rol_empleado` | info_empleado | INSERT | fn_asignar_rol('Empleado') | Assign employee role |
+| `trg_revocar_rol_empleado` | info_empleado | DELETE | fn_revocar_rol('Empleado') | Revoke employee role |
+| `trg_asignar_rol_contratista` | info_contratista | INSERT | fn_asignar_rol('Contratista') | Assign contractor role |
+| `trg_revocar_rol_contratista` | info_contratista | DELETE | fn_revocar_rol('Contratista') | Revoke contractor role |
+| `trg_fallas_insert` | fallas | INSERT | fn_actualizar_fallas() | Update failure count |
+| `trg_fallas_delete` | fallas | DELETE | fn_actualizar_fallas() | Update failure count |
+
+---
+
+## Benefits of Trigger-Based Automation
+
+<CardGroup cols={2}>
+  <Card title="Zero Manual Work" icon="robot">
+    Roles are assigned/revoked automatically
+  </Card>
+  <Card title="Data Consistency" icon="check-double">
+    Roles always match information tables
+  </Card>
+  <Card title="Multi-Role Support" icon="users">
+    Users can have multiple roles seamlessly
+  </Card>
+  <Card title="Automatic Blocking" icon="shield">
+    Users blocked at 4 failures without admin action
+  </Card>
+  <Card title="CSV-Friendly" icon="file-csv">
+    Direct data loading without intermediate steps
+  </Card>
+  <Card title="Audit Trail" icon="clock-rotate-left">
+    All changes tracked through triggers
+  </Card>
+</CardGroup>

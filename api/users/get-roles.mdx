@@ -1,0 +1,83 @@
+---
+title: 'Get User Roles'
+description: 'Retrieve the roles assigned to a user'
+---
+
+## GET /api/usuarios/:id/roles
+
+Retrieves the list of roles assigned to a specific user.
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The institutional ID of the user
+</ParamField>
+
+### Response
+
+<ResponseField name="roles" type="array" required>
+  Array of role names assigned to the user
+  
+  Each element is a string with one of these values:
+  - `"Estudiante"` - Student
+  - `"Empleado"` - Employee
+  - `"Contratista"` - Contractor
+</ResponseField>
+
+### Response Examples
+
+**Single Role (200 OK)**
+
+```json
+{
+  "roles": ["Estudiante"]
+}
+```
+
+**Multiple Roles (200 OK)**
+
+```json
+{
+  "roles": ["Estudiante", "Empleado"]
+}
+```
+
+**No Roles (200 OK)**
+
+```json
+{
+  "roles": []
+}
+```
+
+<Note>
+  Users can have multiple roles. For example, a graduate student working as a teaching assistant would have both "Estudiante" and "Empleado" roles.
+</Note>
+
+### Implementation Details
+
+**Source:** `src/modules/user-profile/infrastructure/repositories/UserProfileRepositoryImpl.js:7-17`
+
+Query structure:
+
+```javascript
+await supabase
+  .from('usuario_roles')
+  .select('roles(nombre_rol)')
+  .eq('id_institucional', idInstitucional)
+```
+
+The query:
+1. Joins `usuario_roles` with the `roles` table
+2. Filters by institutional ID
+3. Extracts role names from the joined data
+4. Returns an array of role name strings
+
+### Role Assignment
+
+Roles are assigned through the admin bulk upload feature:
+- Students: CSV upload to `/api/admin/carga-csv` with type "estudiantes"
+- Employees: CSV upload with type "empleados"
+- Contractors: CSV upload with type "contratistas"
+
+See [Bulk Upload API](/api/admin/bulk-upload) for details on role assignment.

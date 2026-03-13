@@ -1,80 +1,299 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start Guide
+description: Get up and running with UCC Control de Acceso in minutes
 ---
 
-## Get started in three steps
+## Overview
 
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide will help you get UCC Control de Acceso running on your local machine in just a few steps. The system consists of a React frontend connected to a Supabase PostgreSQL database.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  This quick start guide assumes you have basic knowledge of Node.js, React, and PostgreSQL.
 </Note>
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- **Node.js** (v16.x or higher)
+- **npm** (v8.x or higher) or **yarn**
+- **Git**
+- A **Supabase** account (free tier is sufficient)
+
+## Step 1: Clone the Repository
+
+<Steps>
+  <Step title="Clone and Navigate">
+    Clone the repository and navigate to the project directory:
+
+    ```bash
+    git clone https://github.com/xxxpedrozaxxx/ucc-control-acceso.git
+    cd ucc-control-acceso
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    Install all required npm packages:
+
+    <CodeGroup>
+    ```bash npm
+    npm install
+    ```
+
+    ```bash yarn
+    yarn install
+    ```
+
+    ```bash pnpm
+    pnpm install
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Step 2: Set Up Supabase Database
+
+<Steps>
+  <Step title="Create Supabase Project">
+    1. Go to [supabase.com](https://supabase.com) and sign up or log in
+    2. Click **New Project**
+    3. Enter project details:
+       - **Name**: `ucc-control-acceso`
+       - **Database Password**: Choose a strong password
+       - **Region**: Select closest to your location
+    4. Click **Create new project** and wait for initialization
+  </Step>
+
+  <Step title="Run Database Migrations">
+    Navigate to the SQL Editor in your Supabase dashboard and execute each file in order:
+
+    1. **01_usuarios.sql** - Creates `usuarios` table
+    2. **02_roles.sql** - Creates `roles` and `usuario_roles` tables
+    3. **03_info_estudiante.sql** - Creates student information table
+    4. **04_info_empleado.sql** - Creates employee information table
+    5. **05_info_contratista.sql** - Creates contractor information table
+    6. **06_triggers_roles.sql** - Creates automatic role assignment triggers
+    7. **07_fallas.sql** - Creates failure tracking table
+    8. **08_rls_policies.sql** - Sets up Row Level Security policies
+    9. **09_semestres.sql** - Creates semester management functions
+
+    <Note>
+      Copy the contents of each SQL file from `database/supabase/` and paste into the SQL Editor, then click **Run**.
+    </Note>
+  </Step>
+
+  <Step title="Get API Credentials">
+    1. In your Supabase project dashboard, click **Settings** → **API**
+    2. Copy the following values:
+       - **Project URL** (e.g., `https://xxxxx.supabase.co`)
+       - **anon public** API key
+  </Step>
+</Steps>
+
+## Step 3: Configure Environment Variables
+
+<Steps>
+  <Step title="Create Environment File">
+    Create a `.env` file in the root directory:
+
+    ```bash
+    cp .env.example .env
+    ```
+  </Step>
+
+  <Step title="Add Supabase Credentials">
+    Edit `.env` and add your Supabase credentials:
+
+    ```bash .env
+    VITE_SUPABASE_URL=https://your-project.supabase.co
+    VITE_SUPABASE_ANON_KEY=your-anon-key-here
+    ```
+
+    Replace `your-project` and `your-anon-key-here` with the values from Step 2.
+  </Step>
+</Steps>
+
+## Step 4: Load Test Data
+
+<Steps>
+  <Step title="Prepare Sample Data">
+    The project includes sample CSV files in `database/`:
+    - `test_usuarios.csv`
+    - `test_estudiantes.csv`
+    - `test_empleados.csv`
+    - `test_contratistas.csv`
+  </Step>
+
+  <Step title="Load via Admin Panel">
+    1. Start the development server (see Step 5)
+    2. Navigate to `/admin` in your browser
+    3. Go to **Semester Management** → **Load CSV**
+    4. Upload each CSV file in order
+  </Step>
+</Steps>
+
+<Tip>
+  Alternatively, you can manually insert test data using the SQL editor in Supabase.
+</Tip>
+
+## Step 5: Start Development Server
+
+<Steps>
+  <Step title="Run the App">
+    Start the Vite development server:
+
+    <CodeGroup>
+    ```bash npm
+    npm run dev
+    ```
+
+    ```bash yarn
+    yarn dev
+    ```
+
+    ```bash pnpm
+    pnpm dev
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Open in Browser">
+    The application will be available at:
+
+    ```
+    http://localhost:5173
+    ```
+
+    You should see the login page with the UCC institutional branding (blue and orange colors).
+  </Step>
+</Steps>
+
+## Step 6: Test the Application
+
+<Steps>
+  <Step title="Test User Login">
+    Try logging in with a test institutional ID:
+
+    1. Enter an institutional ID (e.g., `80123456` if you loaded test data)
+    2. Click **INGRESAR**
+    3. You should see the user profile page with their roles and information
+  </Step>
+
+  <Step title="Report a Failure">
+    On the user profile page:
+
+    1. Scroll to the bottom
+    2. Click **Reportar TIC**
+    3. Select a failure type:
+       - **Olvido** (Forgotten) - Allows up to 4 failures
+       - **Pérdida** (Lost) - Immediate block
+       - **Robo** (Stolen) - Immediate block
+    4. Confirm the report
+  </Step>
+
+  <Step title="Test Admin Panel">
+    Navigate to the admin panel:
+
+    ```
+    http://localhost:5173/admin
+    ```
+
+    You should see:
+    - Real-time dashboard with statistics
+    - User list with filter options
+    - Reports and export functionality
+    - Semester management tools
+  </Step>
+</Steps>
+
+## Verify Installation
+
+<AccordionGroup>
+  <Accordion title="Database Tables Created">
+    In Supabase, navigate to **Table Editor** and verify these tables exist:
+    - `usuarios`
+    - `roles`
+    - `usuario_roles`
+    - `info_estudiante`
+    - `info_empleado`
+    - `info_contratista`
+    - `registro_fallas`
+    - `semestres`
+  </Accordion>
+
+  <Accordion title="Frontend Loads Successfully">
+    Check that:
+    - Login page displays with UCC colors (blue #003DA5, orange #FF6B35)
+    - No console errors in browser DevTools
+    - Vite HMR (Hot Module Replacement) is working
+  </Accordion>
+
+  <Accordion title="API Connection Works">
+    Test the Supabase connection:
+    1. Open browser DevTools → Network tab
+    2. Enter an institutional ID on login page
+    3. Look for requests to `*.supabase.co`
+    4. Should see 200 OK responses
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Supabase Connection Error">
+    If you see "Failed to fetch" or CORS errors:
+
+    - Verify `.env` file has correct `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+    - Ensure environment variables start with `VITE_` prefix (required by Vite)
+    - Restart the dev server after changing `.env`
+    - Check Supabase project status (should be "Active")
+  </Accordion>
+
+  <Accordion title="User Not Found">
+    If login returns "ID no encontrado":
+
+    - Verify test data was loaded into `usuarios` table
+    - Check table has records: Go to Supabase → Table Editor → `usuarios`
+    - Try a different institutional ID from your test data
+  </Accordion>
+
+  <Accordion title="Port Already in Use">
+    If port 5173 is already in use:
+
+    ```bash
+    # Vite will automatically use the next available port
+    # Or specify a different port:
+    npm run dev -- --port 3000
+    ```
+  </Accordion>
+
+  <Accordion title="Database Migration Failed">
+    If SQL execution fails:
+
+    - Execute files in the correct order (01 through 09)
+    - Check for syntax errors in the SQL output
+    - Ensure you're using the SQL Editor, not the API
+    - Try dropping tables and re-running from scratch
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Explore Architecture" icon="sitemap" href="/architecture">
+    Learn about the Clean Architecture implementation
+  </Card>
+  <Card title="User Guide" icon="book" href="/user-guide/student-flow">
+    Understand the user workflows
+  </Card>
+  <Card title="Admin Panel" icon="gauge" href="/admin/overview">
+    Explore administrative features
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/auth/login">
+    Review the API documentation
+  </Card>
+</CardGroup>
+
+<Info>
+  For detailed development setup, see the [Environment Setup Guide](/development/environment-setup).
+</Info>

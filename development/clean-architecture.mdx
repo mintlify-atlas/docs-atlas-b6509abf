@@ -1,0 +1,675 @@
+---
+title: Clean Architecture
+description: Understanding Clean Architecture implementation in UCC Control de Acceso
+---
+
+## Overview
+
+UCC Control de Acceso follows **Clean Architecture** principles to maintain separation of concerns, testability, and maintainability. The architecture organizes code into distinct layers with clear dependencies.
+
+<Note>
+  Clean Architecture was introduced by Robert C. Martin (Uncle Bob) to create systems that are independent of frameworks, UI, databases, and external agencies.
+</Note>
+
+## Architecture Layers
+
+The application is structured in four main layers:
+
+```
+┌────────────────────────────────────────┐
+│           PRESENTATION LAYER            │
+│    (UI Components, Pages, Hooks)       │
+└────────────────────────────────────────┘
+                    │
+                    ↓
+┌────────────────────────────────────────┐
+│          APPLICATION LAYER             │
+│   (Use Cases, Business Logic, DTOs)   │
+└────────────────────────────────────────┘
+                    │
+                    ↓
+┌────────────────────────────────────────┐
+│             DOMAIN LAYER               │
+│  (Entities, Repository Interfaces,    │
+│       Business Rules, Core Logic)     │
+└────────────────────────────────────────┘
+                    ↑
+                    │
+┌────────────────────────────────────────┐
+│        INFRASTRUCTURE LAYER           │
+│  (API Clients, Database, External     │
+│    Services, Repository Impls)        │
+└────────────────────────────────────────┘
+```
+
+### Dependency Rule
+
+<Warning>
+  **Critical Rule**: Dependencies only point inward. Inner layers must not know about outer layers.
+  
+  - Domain knows nothing about Application, Infrastructure, or Presentation
+  - Application depends only on Domain
+  - Infrastructure depends on Domain (implements interfaces)
+  - Presentation depends on Application and Domain
+</Warning>
+
+## Layer Details
+
+### 1. Domain Layer
+
+The **core** of the application containing business entities and rules.
+
+**Location**: `src/modules/{module}/domain/`
+
+**Contents**:
+- **Entities**: Business objects with behavior
+- **Repository Interfaces**: Abstract contracts for data access
+- **Value Objects**: Immutable objects defined by their values
+- **Business Rules**: Core business logic
+
+#### Example: User Entity
+
+```javascript src/modules/login/domain/entities/User.js
+export class User {
+  constructor({
+    id,
+    idInstitucional,
+    documentoIdentidad,
+    nombreCompleto,
+    acceso,
+    totalFallas,
+    roles = []
+  }) {
+    this.id = id;
+    this.idInstitucional = idInstitucional;
+    this.documentoIdentidad = documentoIdentidad;
+    this.nombreCompleto = nombreCompleto;
+    this.acceso = acceso;
+    this.totalFallas = totalFallas;
+    this.roles = roles;
+  }
+
+  // Business logic methods
+  isBlocked() {
+    return this.acceso === 'bloqueado';
+  }
+
+  isAtRisk() {
+    return this.totalFallas >= 3;
+  }
+
+  getRemainingAttempts() {
+    return Math.max(0, 4 - this.totalFallas);
+  }
+
+  canAccess() {
+    return !this.isBlocked();
+  }
+}
+```
+
+<Note>
+  **Key Principle**: Entities contain business logic related to their data. They don't know about databases, APIs, or UI.
+</Note>
+
+#### Example: Repository Interface
+
+```javascript src/modules/login/domain/repositories/AuthRepository.js
+/**
+ * AuthRepository interface
+ * Defines the contract for authentication data access
+ */
+export class AuthRepository {
+  /**
+   * Validates institutional ID and returns user
+   * @param {string} idInstitucional
+   * @returns {Promise<User|null>}
+   */
+  async validateInstitutionalId(idInstitucional) {
+    throw new Error('Method not implemented');
+  }
+
+  /**
+   * Logs out the current user
+   * @returns {Promise<void>}
+   */
+  async logout() {
+    throw new Error('Method not implemented');
+  }
+}
+```
+
+### 2. Application Layer
+
+Orchestrates the flow of data between layers.
+
+**Location**: `src/modules/{module}/application/`
+
+**Contents**:
+- **Use Cases**: Encapsulate business operations
+- **Hooks**: React hooks that use use cases
+- **DTOs**: Data Transfer Objects for communication
+- **Services**: Application-level services
+
+#### Example: Use Case
+
+```javascript src/modules/login/domain/usecases/ValidateInstitutionalIdUseCase.js
+export class ValidateInstitutionalIdUseCase {
+  constructor(authRepository) {
+    this.authRepository = authRepository;
+  }
+
+  async execute(idInstitucional) {
+    try {
+      // Input validation
+      if (!idInstitucional || idInstitucional.trim() === '') {
+        return {
+          success: false,
+          error: 'El ID institucional es requerido'
+        };
+      }
+
+      // Format validation
+      if (!/^\d+$/.test(idInstitucional)) {
+        return {
+          success: false,
+          error: 'El ID institucional debe contener solo números'
+        };
+      }
+
+      // Business logic
+      const user = await this.authRepository.validateInstitutionalId(idInstitucional);
+
+      if (!user) {
+        return {
+          success: false,
+          error: 'ID institucional no encontrado'
+        };
+      }
+
+      if (user.isBlocked()) {
+        return {
+          success: false,
+          error: 'Tu acceso está bloqueado. Comunícate con la administración.'
+        };
+      }
+
+      return {
+        success: true,
+        user
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message || 'Error al validar el ID institucional'
+      };
+    }
+  }
+}
+```
+
+<Tip>
+  **Use Cases** represent a single business operation. They should be small, focused, and testable.
+</Tip>
+
+#### Example: Application Hook
+
+```javascript src/modules/login/application/hooks/useLogin.js
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ValidateInstitutionalIdUseCase } from '../../domain/usecases/ValidateInstitutionalIdUseCase';
+import { AuthRepositoryImpl } from '../../infrastructure/repositories/AuthRepositoryImpl';
+
+const repository = new AuthRepositoryImpl();
+const validateUseCase = new ValidateInstitutionalIdUseCase(repository);
+
+export const useLogin = () => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const navigate = useNavigate();
+
+  const login = async (idInstitucional) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result = await validateUseCase.execute(idInstitucional);
+
+      if (result.success) {
+        // Store user in localStorage
+        localStorage.setItem('current_user', JSON.stringify(result.user));
+        navigate('/user-profile');
+      } else {
+        setError(result.error);
+      }
+    } catch (err) {
+      setError('Error inesperado. Intenta nuevamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const logout = () => {
+    localStorage.removeItem('current_user');
+    navigate('/login');
+  };
+
+  return { login, logout, loading, error };
+};
+```
+
+### 3. Infrastructure Layer
+
+Implements external dependencies and data sources.
+
+**Location**: `src/modules/{module}/infrastructure/`
+
+**Contents**:
+- **Repository Implementations**: Concrete data access
+- **API Clients**: HTTP clients
+- **Data Sources**: Database connections
+- **External Services**: Third-party integrations
+
+#### Example: Repository Implementation
+
+```javascript src/modules/login/infrastructure/repositories/AuthRepositoryImpl.js
+import { supabase } from '@/shared/lib/supabaseClient';
+import { User } from '../../domain/entities/User';
+import { AuthRepository } from '../../domain/repositories/AuthRepository';
+
+export class AuthRepositoryImpl extends AuthRepository {
+  async validateInstitutionalId(idInstitucional) {
+    const { data, error } = await supabase
+      .from('usuarios')
+      .select(`
+        *,
+        usuario_roles(
+          roles(nombre_rol)
+        )
+      `)
+      .eq('id_institucional', idInstitucional)
+      .single();
+
+    if (error || !data) {
+      return null;
+    }
+
+    // Map database response to domain entity
+    return new User({
+      id: data.id,
+      idInstitucional: data.id_institucional,
+      documentoIdentidad: data.documento_identidad,
+      nombreCompleto: data.nombre_completo,
+      acceso: data.acceso,
+      totalFallas: data.total_fallas,
+      roles: data.usuario_roles.map(ur => ur.roles.nombre_rol)
+    });
+  }
+
+  async logout() {
+    localStorage.removeItem('current_user');
+    localStorage.removeItem('auth_token');
+  }
+}
+```
+
+#### Example: API Client
+
+```javascript src/modules/login/infrastructure/api/apiClient.js
+import axios from 'axios';
+
+const apiClient = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+// Request interceptor
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Response interceptor
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('auth_token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+export default apiClient;
+```
+
+### 4. Presentation Layer
+
+Handles UI and user interactions.
+
+**Location**: `src/modules/{module}/presentation/`
+
+**Contents**:
+- **Pages**: Full page components
+- **Components**: Reusable UI components
+- **Styles**: Component-specific styles
+- **View Models**: Presentation logic
+
+#### Example: Page Component
+
+```jsx src/modules/login/presentation/pages/LoginPage.jsx
+import React from 'react';
+import { LoginForm } from '../components/LoginForm';
+import { useLogin } from '../../application/hooks/useLogin';
+
+export const LoginPage = () => {
+  const { login, loading, error } = useLogin();
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-ucc-azul-primary to-ucc-azul-dark flex items-center justify-center">
+      <div className="max-w-md w-full bg-white rounded-lg shadow-xl p-8">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-ucc-azul-primary">UCC Control de Acceso</h1>
+          <p className="text-gray-600 mt-2">Ingresa tu ID institucional</p>
+        </div>
+
+        <LoginForm onSubmit={login} loading={loading} error={error} />
+      </div>
+    </div>
+  );
+};
+```
+
+#### Example: Presentational Component
+
+```jsx src/modules/login/presentation/components/LoginForm.jsx
+import React, { useState } from 'react';
+
+export const LoginForm = ({ onSubmit, loading, error }) => {
+  const [idInstitucional, setIdInstitucional] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit(idInstitucional);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div>
+        <label htmlFor="id" className="block text-sm font-medium text-gray-700">
+          ID Institucional
+        </label>
+        <input
+          id="id"
+          type="text"
+          value={idInstitucional}
+          onChange={(e) => setIdInstitucional(e.target.value)}
+          className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-ucc-azul-primary focus:border-ucc-azul-primary"
+          placeholder="Ej: 80123456"
+          disabled={loading}
+        />
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          {error}
+        </div>
+      )}
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full btn-primary"
+      >
+        {loading ? 'Validando...' : 'INGRESAR'}
+      </button>
+    </form>
+  );
+};
+```
+
+## Module Structure
+
+Each feature module follows the same structure:
+
+```
+modules/
+└── login/                          # Feature module
+    ├── application/                # Application layer
+    │   └── hooks/                  # React hooks
+    │       └── useLogin.js
+    ├── domain/                     # Domain layer
+    │   ├── entities/               # Business entities
+    │   │   └── User.js
+    │   ├── repositories/           # Repository interfaces
+    │   │   └── AuthRepository.js
+    │   └── usecases/               # Use cases
+    │       └── ValidateInstitutionalIdUseCase.js
+    ├── infrastructure/             # Infrastructure layer
+    │   ├── api/                    # API clients
+    │   │   └── apiClient.js
+    │   └── repositories/           # Repository implementations
+    │       └── AuthRepositoryImpl.js
+    └── presentation/               # Presentation layer
+        ├── components/             # UI components
+        │   └── LoginForm.jsx
+        └── pages/                  # Page components
+            └── LoginPage.jsx
+```
+
+## Benefits of Clean Architecture
+
+### 1. Testability
+
+Each layer can be tested independently:
+
+```javascript
+// Test domain entity
+test('User should be blocked when acceso is bloqueado', () => {
+  const user = new User({ acceso: 'bloqueado', totalFallas: 4 });
+  expect(user.isBlocked()).toBe(true);
+});
+
+// Test use case with mocked repository
+test('ValidateInstitutionalIdUseCase should reject blocked users', async () => {
+  const mockRepo = {
+    validateInstitutionalId: jest.fn().mockResolvedValue(
+      new User({ acceso: 'bloqueado' })
+    )
+  };
+  
+  const useCase = new ValidateInstitutionalIdUseCase(mockRepo);
+  const result = await useCase.execute('80123456');
+  
+  expect(result.success).toBe(false);
+  expect(result.error).toContain('bloqueado');
+});
+```
+
+### 2. Maintainability
+
+Changes are isolated to specific layers:
+
+- **UI Change**: Only affects Presentation layer
+- **Database Change**: Only affects Infrastructure layer (repository implementation)
+- **Business Logic Change**: Only affects Domain/Application layers
+
+### 3. Flexibility
+
+Easy to swap implementations:
+
+```javascript
+// Switch from Supabase to REST API
+const repository = USE_SUPABASE 
+  ? new SupabaseAuthRepository()
+  : new RestApiAuthRepository();
+
+const useCase = new ValidateInstitutionalIdUseCase(repository);
+```
+
+### 4. Independence
+
+- **Framework Independence**: Not tied to React
+- **Database Independence**: Can switch databases
+- **UI Independence**: Can change from web to mobile
+- **Testability**: Easy to test without external dependencies
+
+## Design Patterns Used
+
+### Repository Pattern
+
+Abstracts data access logic:
+
+```javascript
+// Interface (Domain)
+class UserRepository {
+  async findByInstitutionalId(id) {}
+  async save(user) {}
+  async delete(id) {}
+}
+
+// Implementation (Infrastructure)
+class SupabaseUserRepository extends UserRepository {
+  async findByInstitutionalId(id) {
+    const { data } = await supabase.from('usuarios').select('*').eq('id_institucional', id);
+    return data ? new User(data) : null;
+  }
+}
+```
+
+### Dependency Injection
+
+Pass dependencies to constructors:
+
+```javascript
+class ValidateInstitutionalIdUseCase {
+  constructor(authRepository) {
+    this.authRepository = authRepository; // Injected
+  }
+  
+  async execute(id) {
+    return this.authRepository.validateInstitutionalId(id);
+  }
+}
+
+// Usage
+const repository = new AuthRepositoryImpl();
+const useCase = new ValidateInstitutionalIdUseCase(repository);
+```
+
+### Use Case Pattern
+
+Encapsulate business operations:
+
+```javascript
+// Each use case = one business operation
+class CreateUserUseCase { ... }
+class UpdateUserUseCase { ... }
+class DeleteUserUseCase { ... }
+class ValidateInstitutionalIdUseCase { ... }
+```
+
+## Best Practices
+
+<Tip>
+  **Keep layers independent**: Each layer should work without knowing about outer layers.
+</Tip>
+
+<Tip>
+  **Single Responsibility**: Each class/module should have one reason to change.
+</Tip>
+
+<Tip>
+  **Dependency Inversion**: Depend on abstractions, not concretions.
+</Tip>
+
+### Do's and Don'ts
+
+<AccordionGroup>
+  <Accordion title="✅ Do: Keep domain pure">
+    ```javascript
+    // Good: Pure business logic
+    class User {
+      isBlocked() {
+        return this.acceso === 'bloqueado';
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="❌ Don't: Mix layers">
+    ```javascript
+    // Bad: Domain entity with database code
+    class User {
+      async save() {
+        await supabase.from('usuarios').insert(this);
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="✅ Do: Use interfaces for repositories">
+    ```javascript
+    // Good: Abstract interface
+    class AuthRepository {
+      async validateInstitutionalId(id) {
+        throw new Error('Not implemented');
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="❌ Don't: Access database directly from use cases">
+    ```javascript
+    // Bad: Direct database access
+    class ValidateUseCase {
+      async execute(id) {
+        const user = await supabase.from('usuarios').select('*');
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Migration Guide
+
+If you have legacy code, here's how to refactor it:
+
+<Steps>
+  <Step title="Extract domain entities">
+    Move business logic from components to entity classes.
+  </Step>
+
+  <Step title="Create repository interfaces">
+    Define abstractions for data access.
+  </Step>
+
+  <Step title="Implement repositories">
+    Move API/database code to repository implementations.
+  </Step>
+
+  <Step title="Create use cases">
+    Extract business operations into use case classes.
+  </Step>
+
+  <Step title="Update components">
+    Make components use hooks that call use cases.
+  </Step>
+</Steps>
+
+## Further Reading
+
+- [Clean Architecture by Robert C. Martin](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
+- [Frontend Architecture](/development/frontend-architecture)
+- [Backend Architecture](/development/backend-architecture)
+- [Code Standards](/development/code-standards)

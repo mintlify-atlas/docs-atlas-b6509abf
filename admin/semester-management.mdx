@@ -1,0 +1,396 @@
+---
+title: Semester Management
+description: Handle semester transitions and CSV data uploads
+---
+
+# Semester Management
+
+Semester transitions require careful data management to archive old records and load new student/employee data.
+
+## Semester Lifecycle
+
+<Steps>
+  <Step title="Current Semester Active">
+    System operates normally:
+    - Users register failures
+    - Counters accumulate
+    - Blocking occurs at 4 failures
+  </Step>
+
+  <Step title="Semester Ends">
+    **End-of-semester tasks**:
+    1. Generate final reports
+    2. Export all data for archival
+    3. Review blocked users
+    4. Prepare for transition
+  </Step>
+
+  <Step title="Semester Transition">
+    **Critical period**:
+    1. Create new semester record
+    2. Mark old semester inactive
+    3. Reset all failure counters
+    4. Unblock all users (fresh start)
+  </Step>
+
+  <Step title="Load New Semester Data">
+    **Data import**:
+    1. Upload student CSV (new enrollments)
+    2. Upload employee CSV (staff changes)
+    3. Upload contractor CSV (new contracts)
+    4. Verify data loaded correctly
+  </Step>
+
+  <Step title="New Semester Active">
+    System ready:
+    - All users start with 0 failures
+    - All users active (unblocked)
+    - New semester data in place
+  </Step>
+</Steps>
+
+## Creating a New Semester
+
+### SQL Approach
+
+```sql
+-- Step 1: Mark current semester inactive
+UPDATE semestres SET activo = false WHERE activo = true;
+
+-- Step 2: Create new semester
+INSERT INTO semestres (nombre, fecha_inicio, fecha_fin, activo)
+VALUES ('2026-2', '2026-07-01', '2026-12-15', true);
+
+-- Step 3: Reset all users
+UPDATE usuarios 
+SET acceso = 'activo', 
+    total_fallas = 0;
+
+-- Step 4: Optional - Archive old failures
+-- (Keep for historical record, but could move to archive table)
+```
+
+### Admin Panel Approach
+
+<Steps>
+  <Step title="Navigate to Semester Management">
+    Click "Gestión de Semestres" in admin panel sidebar.
+  </Step>
+
+  <Step title="Click Nuevo Semestre">
+    Button appears: "Iniciar Nuevo Semestre".
+  </Step>
+
+  <Step title="Enter Semester Info">
+    ```
+    Nombre: 2026-2
+    Fecha Inicio: 2026-07-01
+    Fecha Fin: 2026-12-15
+    ```
+  </Step>
+
+  <Step title="Confirm Actions">
+    System will:
+    - Close current semester
+    - Reset all failure counters
+    - Unblock all users
+    - Create new semester record
+
+    **Confirmation required**: "Esta acción afectará a todos los usuarios. ¿Continuar?"
+  </Step>
+
+  <Step title="Success">
+    ```
+    ✅ Nuevo semestre creado exitosamente
+    
+    Semestre: 2026-2
+    Usuarios reseteados: 1,947
+    Usuarios desbloqueados: 23
+    ```
+  </Step>
+</Steps>
+
+## CSV Data Upload
+
+### File Formats
+
+<Tabs>
+  <Tab title="students.csv">
+    **Columns**: `id_institucional`, `programa`
+
+    ```csv
+    id_institucional,programa
+    80123456,Ingeniería de Sistemas
+    80123457,Derecho
+    80123458,Medicina
+    ```
+
+    **Validation**:
+    - ID must exist in `usuarios` table
+    - Program cannot be empty
+  </Tab>
+
+  <Tab title="employees.csv">
+    **Columns**: `id_institucional`, `cargo`, `dependencia`
+
+    ```csv
+    id_institucional,cargo,dependencia
+    80234567,Coordinador,Tesorería
+    80234568,Asistente,Biblioteca
+    ```
+
+    **Validation**:
+    - ID must exist in `usuarios`
+    - Cargo and dependencia required
+  </Tab>
+
+  <Tab title="contractors.csv">
+    **Columns**: `id_institucional`, `empresa`
+
+    ```csv
+    id_institucional,empresa
+    80888777,ACME Services SAS
+    80888778,TechCorp Ltda
+    ```
+
+    **Validation**:
+    - ID must exist in `usuarios`
+    - Empresa cannot be empty
+  </Tab>
+
+  <Tab title="users.csv">
+    **Columns**: `id_institucional`, `documento_identidad`, `nombre_completo`
+
+    ```csv
+    id_institucional,documento_identidad,nombre_completo
+    80123456,1234567890,Juan Pérez Gómez
+    80234567,9876543210,María López García
+    ```
+
+    **Upload Order**: Users FIRST, then role-specific files.
+  </Tab>
+</Tabs>
+
+### Upload Process
+
+<Steps>
+  <Step title="Export Current Data">
+    **Before uploading new data**, export current semester:
+    ```
+    Click: "Exportar Datos Actuales"
+    Format: Excel with all tables
+    Filename: UCC_Control_Acceso_2026-1_Final.xlsx
+    ```
+  </Step>
+
+  <Step title="Prepare CSV Files">
+    Obtain from:
+    - Student registrar system
+    - HR department
+    - Contracts management
+    
+    Verify format matches templates.
+  </Step>
+
+  <Step title="Upload Users First">
+    ```
+    File: users.csv
+    Action: Upload
+    Result: 1,947 users created
+    ```
+  </Step>
+
+  <Step title="Upload Role Files">
+    ```
+    File: students.csv
+    Result: 1,523 students created, roles assigned
+    
+    File: employees.csv
+    Result: 387 employees created, roles assigned
+    
+    File: contractors.csv
+    Result: 37 contractors created, roles assigned
+    ```
+  </Step>
+
+  <Step title="Verify Upload">
+    System shows summary:
+    ```
+    Total Usuarios: 1,947
+    Estudiantes: 1,523
+    Empleados: 387
+    Contratistas: 37
+    Multi-rol: 14
+    ```
+  </Step>
+</Steps>
+
+## Database Cleanup
+
+<Warning>
+  **Advanced Operation**: Only for directors. Irreversible.
+</Warning>
+
+### Clean Old Semester Data
+
+```sql
+-- Option 1: Archive to separate table (recommended)
+INSERT INTO fallas_archivo 
+SELECT *, '2026-1' as semestre FROM fallas;
+
+DELETE FROM fallas;
+
+-- Option 2: Delete completely (not recommended)
+-- DELETE FROM fallas; -- Loses historical data
+```
+
+### Keep vs Delete
+
+<Tabs>
+  <Tab title="Keep (Recommended)">
+    **Advantages**:
+    - Historical analysis
+    - Trend tracking
+    - Audit trail
+    - Pattern identification
+
+    **Storage Impact**: Minimal (text data is small)
+  </Tab>
+
+  <Tab title="Delete">
+    **Advantages**:
+    - Fresh start
+    - Smaller database
+    - Faster queries
+
+    **Disadvantages**:
+    - Lose historical data
+    - Cannot analyze trends
+    - No accountability record
+  </Tab>
+</Tabs>
+
+## Semester Table
+
+### Schema
+
+```sql
+CREATE TABLE semestres (
+    id BIGSERIAL PRIMARY KEY,
+    nombre TEXT NOT NULL,                    -- '2026-1', '2026-2'
+    fecha_inicio DATE NOT NULL,
+    fecha_fin DATE NOT NULL,
+    activo BOOLEAN NOT NULL DEFAULT true,
+    creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    CONSTRAINT semestres_fechas_validas CHECK (fecha_fin > fecha_inicio)
+);
+
+-- Only one active semester at a time
+CREATE UNIQUE INDEX semestres_activo_unico
+    ON semestres (activo)
+    WHERE activo = true;
+```
+
+### Query Active Semester
+
+```sql
+SELECT * FROM semestres WHERE activo = true;
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Export Before Import">
+    **Why**: Backup in case of import errors
+
+    **How**: 
+    ```
+    Admin Panel > Exportar Datos > Excel Completo
+    ```
+
+    **Store**: On secure network drive with date stamp
+  </Accordion>
+
+  <Accordion title="Test CSV Files First">
+    **Why**: Catch format errors before full upload
+
+    **How**:
+    1. Upload to staging environment
+    2. Verify 10-20 sample records
+    3. Check role assignments
+    4. Then upload to production
+  </Accordion>
+
+  <Accordion title="Communicate Transition">
+    **Notify**:
+    - Security personnel
+    - Student services
+    - IT department
+
+    **Timeline**:
+    - 1 week before: Announcement
+    - Day before: Reminder
+    - Day of: System may be briefly unavailable
+  </Accordion>
+
+  <Accordion title="Schedule During Low Usage">
+    **Best Times**:
+    - Weekend mornings
+    - Between semesters
+    - During holiday breaks
+
+    **Avoid**:
+    - Weekday mornings (peak entry)
+    - Exam periods
+    - First week of semester
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="CSV Upload Fails">
+    **Common Issues**:
+    - Wrong encoding (use UTF-8)
+    - Extra spaces in columns
+    - Missing required fields
+    - Duplicate IDs
+
+    **Solution**: Validate CSV format, check error logs
+  </Accordion>
+
+  <Accordion title="Roles Not Assigned">
+    **Check**:
+    1. Triggers enabled? `SELECT * FROM pg_trigger;`
+    2. User exists in `usuarios` first?
+    3. CSV columns match table schema?
+
+    **Fix**: Re-run trigger functions manually if needed
+  </Accordion>
+
+  <Accordion title="Some Users Still Blocked">
+    **After Semester Reset**:
+    ```sql
+    -- Verify all users unblocked
+    SELECT COUNT(*) FROM usuarios WHERE acceso = 'bloqueado';
+    
+    -- If any remain, manual unblock:
+    UPDATE usuarios SET acceso = 'activo', total_fallas = 0;
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Dashboard" href="/admin/dashboard">
+    Monitor new semester activity
+  </Card>
+  <Card title="Reports" href="/admin/reports">
+    Generate semester reports
+  </Card>
+  <Card title="User Management" href="/admin/user-management">
+    Manage user accounts
+  </Card>
+</CardGroup>

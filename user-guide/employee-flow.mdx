@@ -1,0 +1,84 @@
+---
+title: Employee User Flow
+description: Workflow for employees accessing campus without TIC
+---
+
+# Employee User Flow
+
+This guide covers the process for **UCC employees** who need contingent entry without their physical TIC card.
+
+## Employee vs Student
+
+<Note>
+  The entry process is **identical** for employees and students. The main differences are:
+  - Employee information displayed (cargo, dependencia)
+  - Same 4-strike rule applies
+  - Same blocking mechanisms
+</Note>
+
+## Complete Flow
+
+<Steps>
+  <Step title="Arrive at Campus">
+    Employee arrives at UCC campus entrance without TIC card.
+  </Step>
+
+  <Step title="Enter Institutional ID">
+    Enter your employee ID number (format: 80XXXXXX).
+  </Step>
+
+  <Step title="View Employee Profile">
+    System displays:
+    ```
+    💼 María López García
+    ID: 80234567 | CC: 9876543210
+    
+    EMPLEADO
+    • Cargo: Coordinadora
+    • Dependencia: Tesorería
+    
+    Fallas: 1/4
+    ```
+  </Step>
+
+  <Step title="Register Entry">
+    Click "Registrar Ingreso Sin Carnet" and select reason (Olvido/Perdida).
+  </Step>
+
+  <Step title="Enter or Visit Admin">
+    Based on result, either enter campus or go to administration.
+  </Step>
+</Steps>
+
+## Multi-Role Employees
+
+If you're both employee AND student:
+
+```
+👤 Carlos Mendoza
+ID: 80999888
+
+EMPLEADO
+• Cargo: Asistente
+• Dependencia: Biblioteca
+
+ESTUDIANTE
+• Programa: Maestría en Educación
+
+Fallas: 2/4
+```
+
+<Warning>
+  Failure counter applies to **your account**, not individual roles. Blocking affects all your roles.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Multi-Role System" href="/features/multi-role-system">
+    Learn about multiple roles
+  </Card>
+  <Card title="Contractor Flow" href="/user-guide/contractor-flow">
+    Process for contractors
+  </Card>
+</CardGroup>

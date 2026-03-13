@@ -1,0 +1,195 @@
+---
+title: 'Admin Dashboard'
+description: 'Get dashboard statistics and visualizations'
+---
+
+## GET /api/admin/dashboard
+
+Retrieves comprehensive statistics and data for the admin dashboard, including user counts, failure trends, and distribution by program.
+
+### Response
+
+<ResponseField name="stats" type="object" required>
+  Summary statistics
+  
+  <Expandable title="Statistics properties">
+    <ResponseField name="totalEstudiantes" type="integer">
+      Total number of users with the "Estudiante" role
+    </ResponseField>
+    
+    <ResponseField name="activos" type="integer">
+      Number of users with `acceso = "activo"` (all roles)
+    </ResponseField>
+    
+    <ResponseField name="bloqueados" type="integer">
+      Number of users with `acceso = "bloqueado"` (all roles)
+    </ResponseField>
+    
+    <ResponseField name="reportesHoy" type="integer">
+      Number of failure reports filed today (00:00:00 to 23:59:59)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="fallas7d" type="array" required>
+  Failure trends for the last 7 days, grouped by day and failure type
+  
+  <Expandable title="Daily failure object">
+    <ResponseField name="dia" type="string">
+      Day label in format "Weekday DD" (e.g., "Lun 13")
+    </ResponseField>
+    
+    <ResponseField name="olvido" type="integer">
+      Number of "forgot card" failures on this day
+    </ResponseField>
+    
+    <ResponseField name="perdida" type="integer">
+      Number of "lost card" failures on this day
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="porPrograma" type="array" required>
+  Student distribution by academic program, sorted by total (descending)
+  
+  <Expandable title="Program distribution object">
+    <ResponseField name="programa" type="string">
+      Academic program name (or "Sin programa" if not assigned)
+    </ResponseField>
+    
+    <ResponseField name="total" type="integer">
+      Number of students in this program
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="usuarios" type="array" required>
+  Complete list of all users with their roles and status
+  
+  <Expandable title="User object properties">
+    <ResponseField name="id_institucional" type="string">
+      Institutional ID
+    </ResponseField>
+    
+    <ResponseField name="nombre_completo" type="string">
+      Full name
+    </ResponseField>
+    
+    <ResponseField name="acceso" type="string">
+      Access status: `"activo"` or `"bloqueado"`
+    </ResponseField>
+    
+    <ResponseField name="total_fallas" type="integer">
+      Number of access failures (0-4)
+    </ResponseField>
+    
+    <ResponseField name="roles" type="array">
+      Array of role names (e.g., `["Estudiante"]`, `["Empleado", "Contratista"]`)
+    </ResponseField>
+    
+    <ResponseField name="infoExtra" type="string">
+      Concatenated role-specific info for display (e.g., "Ingeniería de Sistemas", "TIC · Analista")
+    </ResponseField>
+    
+    <ResponseField name="infoItems" type="array">
+      Structured role-specific information
+      
+      <Expandable title="Info item properties">
+        <ResponseField name="tipo" type="string">
+          Type of info: `"programa"`, `"dependencia"`, or `"empresa"`
+        </ResponseField>
+        
+        <ResponseField name="valor" type="string">
+          The actual value
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "stats": {
+    "totalEstudiantes": 1247,
+    "activos": 1389,
+    "bloqueados": 23,
+    "reportesHoy": 8
+  },
+  "fallas7d": [
+    { "dia": "Lun 7", "olvido": 3, "perdida": 1 },
+    { "dia": "Mar 8", "olvido": 5, "perdida": 0 },
+    { "dia": "Mié 9", "olvido": 2, "perdida": 2 },
+    { "dia": "Jue 10", "olvido": 4, "perdida": 1 },
+    { "dia": "Vie 11", "olvido": 6, "perdida": 0 },
+    { "dia": "Sáb 12", "olvido": 1, "perdida": 0 },
+    { "dia": "Dom 13", "olvido": 0, "perdida": 0 }
+  ],
+  "porPrograma": [
+    { "programa": "Ingeniería de Sistemas", "total": 342 },
+    { "programa": "Administración de Empresas", "total": 289 },
+    { "programa": "Derecho", "total": 231 },
+    { "programa": "Medicina", "total": 198 }
+  ],
+  "usuarios": [
+    {
+      "id_institucional": "123456789",
+      "nombre_completo": "Ana María Rodríguez",
+      "acceso": "activo",
+      "total_fallas": 1,
+      "roles": ["Estudiante"],
+      "infoExtra": "Ingeniería de Sistemas",
+      "infoItems": [
+        { "tipo": "programa", "valor": "Ingeniería de Sistemas" }
+      ]
+    },
+    {
+      "id_institucional": "987654321",
+      "nombre_completo": "Carlos Gómez Pérez",
+      "acceso": "bloqueado",
+      "total_fallas": 4,
+      "roles": ["Empleado"],
+      "infoExtra": "TIC",
+      "infoItems": [
+        { "tipo": "dependencia", "valor": "TIC" }
+      ]
+    }
+  ]
+}
+```
+
+<Note>
+  The dashboard data is optimized for performance:
+  - Statistics queries run in parallel
+  - Role-specific information is fetched in bulk for all users
+  - The frontend hook auto-refreshes data every 30 seconds without showing a loading spinner
+</Note>
+
+### Auto-Refresh Behavior
+
+**Source:** `src/modules/admin/application/hooks/useAdminDashboard.js:56-73`
+
+The dashboard implements intelligent auto-refresh:
+- **Initial load**: Shows loading spinner while fetching all data
+- **Silent refresh**: Every 30 seconds, updates `stats` and `usuarios` in the background without disrupting the UI
+- **Manual refresh**: User can trigger a full reload with loading indicator
+
+### Implementation Details
+
+**Source:** `src/modules/admin/infrastructure/repositories/AdminRepositoryImpl.js`
+
+Key methods:
+- `getStats()` (line 9): Parallel queries for all statistics
+- `getFallasUltimos7Dias()` (line 60): 7-day failure trends with date formatting
+- `getEstudiantesPorPrograma()` (line 97): Program distribution aggregation
+- `getUsuarios()` (line 116): Complex query joining users, roles, and role-specific info
+
+### Query Optimization
+
+The endpoint uses several optimization strategies:
+
+1. **Parallel Execution**: All top-level queries run concurrently using `Promise.all()`
+2. **Count-Only Queries**: Statistics use `{ count: 'exact', head: true }` to avoid fetching full datasets
+3. **Bulk Joins**: User list fetches all role info with `IN` queries rather than N+1 queries
+4. **Role-Based Filtering**: Only queries role-specific tables for users who have that role

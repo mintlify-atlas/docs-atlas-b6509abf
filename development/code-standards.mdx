@@ -1,0 +1,764 @@
+---
+title: Code Standards
+description: Coding conventions and best practices for UCC Control de Acceso
+---
+
+## Overview
+
+This document defines the coding standards and best practices for the UCC Control de Acceso project. Following these standards ensures consistency, maintainability, and quality across the codebase.
+
+## General Principles
+
+<CardGroup cols={2}>
+  <Card title="Clean Code" icon="broom">
+    Write code that is easy to read and understand
+  </Card>
+  <Card title="DRY" icon="repeat">
+    Don't Repeat Yourself - avoid code duplication
+  </Card>
+  <Card title="KISS" icon="heart">
+    Keep It Simple, Stupid - prefer simple solutions
+  </Card>
+  <Card title="YAGNI" icon="minus-circle">
+    You Aren't Gonna Need It - don't add unnecessary features
+  </Card>
+</CardGroup>
+
+## JavaScript/React Standards
+
+### File Naming
+
+| Type | Convention | Example |
+|------|-----------|----------|
+| React Components | PascalCase | `UserCard.jsx` |
+| Hooks | camelCase with 'use' prefix | `useLogin.js` |
+| Utilities | camelCase | `formatDate.js` |
+| Constants | UPPER_SNAKE_CASE | `API_ENDPOINTS.js` |
+| Classes | PascalCase | `User.js`, `AuthRepository.js` |
+| Test files | Same as source + .test | `User.test.js` |
+
+### Variable Naming
+
+```javascript
+// Good: Descriptive and clear
+const institutionalId = '80123456';
+const isUserBlocked = user.acceso === 'bloqueado';
+const MAX_LOGIN_ATTEMPTS = 4;
+
+// Bad: Unclear abbreviations
+const id = '80123456';
+const blk = user.acceso === 'bloqueado';
+const max = 4;
+```
+
+<Tip>
+  **Use descriptive names** that reveal intent. Code is read more often than written.
+</Tip>
+
+### Function Naming
+
+```javascript
+// Good: Verb-based, action-oriented
+function validateInstitutionalId(id) { }
+function fetchUserData() { }
+function calculateRemainingAttempts(failures) { }
+
+// Bad: Unclear or noun-based
+function id(id) { }
+function data() { }
+function attempts(failures) { }
+```
+
+### Code Formatting
+
+<Tabs>
+  <Tab title="Indentation">
+    Use **2 spaces** for indentation (not tabs).
+    
+    ```javascript
+    function example() {
+      if (condition) {
+        doSomething();
+      }
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Line Length">
+    Maximum **100 characters** per line.
+    
+    ```javascript
+    // Good: Break long lines
+    const result = await someVeryLongFunctionName(
+      parameterOne,
+      parameterTwo,
+      parameterThree
+    );
+    
+    // Bad: Line too long
+    const result = await someVeryLongFunctionName(parameterOne, parameterTwo, parameterThree, parameterFour);
+    ```
+  </Tab>
+  
+  <Tab title="Quotes">
+    Use **single quotes** for strings (unless JSX).
+    
+    ```javascript
+    const message = 'Hello world';
+    const jsx = <div className="container">Content</div>;
+    ```
+  </Tab>
+  
+  <Tab title="Semicolons">
+    Always use **semicolons**.
+    
+    ```javascript
+    const x = 5;
+    const y = 10;
+    ```
+  </Tab>
+</Tabs>
+
+## React Component Standards
+
+### Functional Components
+
+Use functional components with hooks:
+
+```jsx
+// Good: Functional component with hooks
+import React, { useState, useEffect } from 'react';
+
+export const UserProfile = ({ userId }) => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchUser(userId).then(setUser).finally(() => setLoading(false));
+  }, [userId]);
+
+  if (loading) return <LoadingSpinner />;
+  if (!user) return <ErrorMessage />;
+
+  return (
+    <div className="user-profile">
+      <h2>{user.nombreCompleto}</h2>
+      <p>ID: {user.idInstitucional}</p>
+    </div>
+  );
+};
+```
+
+### Component Structure
+
+Organize components in this order:
+
+```jsx
+// 1. Imports
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '@/shared/components';
+
+// 2. Constants
+const MAX_ATTEMPTS = 4;
+
+// 3. Helper functions (if needed)
+const calculateProgress = (current, max) => (current / max) * 100;
+
+// 4. Component
+export const UserCard = ({ user, onUpdate }) => {
+  // 4a. Hooks
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+
+  // 4b. Event handlers
+  const handleUpdate = async () => {
+    setLoading(true);
+    await onUpdate(user.id);
+    setLoading(false);
+  };
+
+  // 4c. Render
+  return (
+    <div className="user-card">
+      {/* Component JSX */}
+    </div>
+  );
+};
+```
+
+### Props Destructuring
+
+```jsx
+// Good: Destructure props
+export const UserCard = ({ user, onUpdate, loading }) => {
+  return <div>{user.nombreCompleto}</div>;
+};
+
+// Bad: Use props object
+export const UserCard = (props) => {
+  return <div>{props.user.nombreCompleto}</div>;
+};
+```
+
+### Conditional Rendering
+
+```jsx
+// Good: Early returns for loading/error states
+if (loading) return <LoadingSpinner />;
+if (error) return <ErrorMessage message={error} />;
+if (!data) return null;
+
+return <MainContent data={data} />;
+
+// Good: Ternary for simple conditions
+{isAdmin ? <AdminPanel /> : <UserPanel />}
+
+// Good: && for conditional rendering
+{user.isBlocked && <BlockedBadge />}
+
+// Bad: Nested ternaries
+{loading ? <Spinner /> : error ? <Error /> : data ? <Content /> : null}
+```
+
+## Clean Architecture Standards
+
+### Domain Layer
+
+```javascript
+// User.js - Domain entity
+export class User {
+  constructor({ id, idInstitucional, nombreCompleto, acceso, totalFallas, roles }) {
+    this.id = id;
+    this.idInstitucional = idInstitucional;
+    this.nombreCompleto = nombreCompleto;
+    this.acceso = acceso;
+    this.totalFallas = totalFallas;
+    this.roles = roles || [];
+  }
+
+  // Business logic methods
+  isBlocked() {
+    return this.acceso === 'bloqueado';
+  }
+
+  isAtRisk() {
+    return this.totalFallas >= 3 && !this.isBlocked();
+  }
+
+  getRemainingAttempts() {
+    return Math.max(0, 4 - this.totalFallas);
+  }
+}
+```
+
+<Note>
+  **Domain entities** should contain only business logic, no UI or database code.
+</Note>
+
+### Repository Interface
+
+```javascript
+// AuthRepository.js - Repository interface
+export class AuthRepository {
+  /**
+   * Validates institutional ID and returns user
+   * @param {string} idInstitucional
+   * @returns {Promise<User|null>}
+   */
+  async validateInstitutionalId(idInstitucional) {
+    throw new Error('Method validateInstitutionalId must be implemented');
+  }
+
+  /**
+   * Logs out current user
+   * @returns {Promise<void>}
+   */
+  async logout() {
+    throw new Error('Method logout must be implemented');
+  }
+}
+```
+
+### Use Cases
+
+```javascript
+// ValidateInstitutionalIdUseCase.js
+export class ValidateInstitutionalIdUseCase {
+  constructor(authRepository) {
+    if (!authRepository) {
+      throw new Error('AuthRepository is required');
+    }
+    this.authRepository = authRepository;
+  }
+
+  async execute(idInstitucional) {
+    // Input validation
+    if (!idInstitucional || idInstitucional.trim() === '') {
+      return { success: false, error: 'El ID institucional es requerido' };
+    }
+
+    if (!/^\d+$/.test(idInstitucional)) {
+      return { success: false, error: 'El ID institucional debe contener solo números' };
+    }
+
+    // Business logic
+    try {
+      const user = await this.authRepository.validateInstitutionalId(idInstitucional);
+
+      if (!user) {
+        return { success: false, error: 'ID institucional no encontrado' };
+      }
+
+      if (user.isBlocked()) {
+        return { success: false, error: 'Tu acceso está bloqueado' };
+      }
+
+      return { success: true, user };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+}
+```
+
+## Error Handling
+
+### Try-Catch Blocks
+
+```javascript
+// Good: Specific error handling
+try {
+  const user = await fetchUser(id);
+  return { success: true, data: user };
+} catch (error) {
+  console.error('Failed to fetch user:', error);
+  
+  if (error.code === 'NETWORK_ERROR') {
+    return { success: false, error: 'Sin conexión a internet' };
+  }
+  
+  return { success: false, error: 'Error al cargar usuario' };
+}
+
+// Bad: Silent failures
+try {
+  const user = await fetchUser(id);
+} catch (error) {
+  // Nothing
+}
+```
+
+### User-Friendly Error Messages
+
+```javascript
+// Good: Clear, actionable messages
+throw new Error('El ID institucional debe contener solo números');
+throw new Error('No se pudo conectar al servidor. Verifica tu conexión.');
+
+// Bad: Technical jargon
+throw new Error('RegExp validation failed');
+throw new Error('ERR_CONNECTION_REFUSED');
+```
+
+## Async/Await
+
+```javascript
+// Good: Use async/await
+async function fetchUserData(id) {
+  try {
+    const user = await userRepository.findById(id);
+    const roles = await roleRepository.findByUserId(id);
+    return { user, roles };
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    throw error;
+  }
+}
+
+// Avoid: Promise chains (unless necessary)
+function fetchUserData(id) {
+  return userRepository.findById(id)
+    .then(user => roleRepository.findByUserId(id)
+      .then(roles => ({ user, roles }))
+    )
+    .catch(error => {
+      console.error('Error:', error);
+      throw error;
+    });
+}
+```
+
+## Comments and Documentation
+
+### When to Comment
+
+```javascript
+// Good: Explain WHY, not WHAT
+// Reset failures when user is unblocked to give them a fresh start
+user.totalFallas = 0;
+
+// Good: Document complex logic
+/**
+ * Calculates blocking status based on failure type:
+ * - 'olvido': Block after 4 attempts
+ * - 'perdida' or 'robo': Block immediately
+ */
+function shouldBlockUser(motivo, totalFallas) {
+  if (motivo === 'olvido') {
+    return totalFallas >= 4;
+  }
+  return true; // perdida or robo
+}
+
+// Bad: Obvious comments
+// Increment total failures
+totalFallas++;
+
+// Set loading to true
+setLoading(true);
+```
+
+### JSDoc Comments
+
+```javascript
+/**
+ * Validates institutional ID format and checks user status
+ * @param {string} idInstitucional - The institutional ID to validate
+ * @returns {Promise<{success: boolean, user?: User, error?: string}>} Validation result
+ * @throws {Error} If repository connection fails
+ * @example
+ * const result = await validateInstitutionalId('80123456');
+ * if (result.success) {
+ *   console.log('User:', result.user);
+ * }
+ */
+async function validateInstitutionalId(idInstitucional) {
+  // Implementation
+}
+```
+
+## CSS and Styling
+
+### Tailwind CSS
+
+Use Tailwind utility classes:
+
+```jsx
+// Good: Tailwind utilities
+<div className="flex items-center justify-between bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+  <h2 className="text-2xl font-bold text-ucc-azul-primary">Title</h2>
+</div>
+
+// Avoid: Inline styles (unless dynamic)
+<div style={{ display: 'flex', padding: '24px' }}>Content</div>
+```
+
+### Custom Classes
+
+Define reusable classes in `index.css`:
+
+```css
+@layer components {
+  .btn-primary {
+    @apply bg-ucc-azul-primary text-white px-6 py-3 rounded-lg;
+    @apply hover:bg-ucc-azul-dark transition-colors;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .card {
+    @apply bg-white rounded-lg shadow-md p-6;
+  }
+}
+```
+
+### Responsive Design
+
+```jsx
+// Good: Mobile-first approach
+<div className="w-full md:w-1/2 lg:w-1/3">
+  <div className="text-sm md:text-base lg:text-lg">
+    Responsive text
+  </div>
+</div>
+```
+
+## Database and API
+
+### Supabase Queries
+
+```javascript
+// Good: Specific select with joins
+const { data, error } = await supabase
+  .from('usuarios')
+  .select(`
+    id,
+    id_institucional,
+    nombre_completo,
+    usuario_roles(
+      roles(nombre_rol)
+    )
+  `)
+  .eq('id_institucional', idInstitucional)
+  .single();
+
+// Bad: Select all fields unnecessarily
+const { data } = await supabase
+  .from('usuarios')
+  .select('*');
+```
+
+### Error Handling
+
+```javascript
+// Good: Check for errors
+const { data, error } = await supabase.from('usuarios').select('*');
+
+if (error) {
+  console.error('Database error:', error);
+  throw new Error('No se pudo cargar los usuarios');
+}
+
+return data;
+
+// Bad: Ignore errors
+const { data } = await supabase.from('usuarios').select('*');
+return data;
+```
+
+## Performance Best Practices
+
+### React Performance
+
+```javascript
+// Good: Memoize expensive calculations
+const filteredUsers = useMemo(() => {
+  return usuarios.filter(u => u.acceso === filter);
+}, [usuarios, filter]);
+
+// Good: Memoize callbacks
+const handleUpdate = useCallback((id) => {
+  updateUser(id);
+}, [updateUser]);
+
+// Good: Avoid unnecessary re-renders
+export const UserCard = React.memo(({ user }) => {
+  return <div>{user.nombreCompleto}</div>;
+});
+```
+
+### Database Performance
+
+```javascript
+// Good: Use indexes for queries
+// CREATE INDEX idx_usuarios_id_institucional ON usuarios(id_institucional);
+
+// Good: Limit results
+const { data } = await supabase
+  .from('registro_fallas')
+  .select('*')
+  .order('fecha_hora', { ascending: false })
+  .limit(100);
+
+// Good: Use pagination
+const { data } = await supabase
+  .from('usuarios')
+  .select('*')
+  .range(start, end);
+```
+
+## Security Best Practices
+
+### Environment Variables
+
+```javascript
+// Good: Use environment variables
+const apiUrl = import.meta.env.VITE_API_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
+
+// Bad: Hardcode sensitive data
+const apiUrl = 'https://api.example.com';
+const apiKey = 'sk_live_abc123xyz';
+```
+
+### Input Validation
+
+```javascript
+// Good: Validate and sanitize input
+function validateIdInstitucional(id) {
+  // Check format
+  if (!/^\d{6,10}$/.test(id)) {
+    throw new Error('Formato inválido');
+  }
+  
+  // Sanitize
+  return id.trim();
+}
+
+// Bad: Trust user input
+function processId(id) {
+  return await query(`SELECT * FROM usuarios WHERE id = ${id}`);
+}
+```
+
+### Authentication
+
+```javascript
+// Good: Check authentication
+if (!isAuthenticated()) {
+  navigate('/login');
+  return;
+}
+
+// Good: Verify permissions
+if (!user.isAdmin()) {
+  throw new Error('Acceso denegado');
+}
+```
+
+## Testing Standards
+
+### Test Structure
+
+```javascript
+// Good: AAA pattern (Arrange, Act, Assert)
+describe('User Entity', () => {
+  test('should identify blocked users', () => {
+    // Arrange
+    const user = new User({ acceso: 'bloqueado', totalFallas: 4 });
+    
+    // Act
+    const isBlocked = user.isBlocked();
+    
+    // Assert
+    expect(isBlocked).toBe(true);
+  });
+});
+```
+
+### Test Names
+
+```javascript
+// Good: Descriptive test names
+test('should block user after 4 olvido failures')
+test('should return error when ID is invalid')
+test('should allow access when user is active')
+
+// Bad: Vague test names
+test('user test')
+test('it works')
+test('check blocking')
+```
+
+## Linting and Formatting
+
+### ESLint Configuration
+
+```json .eslintrc.json
+{
+  "extends": [
+    "eslint:recommended",
+    "plugin:react/recommended",
+    "plugin:react-hooks/recommended"
+  ],
+  "rules": {
+    "no-console": "warn",
+    "no-unused-vars": "error",
+    "react/prop-types": "off",
+    "react/react-in-jsx-scope": "off"
+  }
+}
+```
+
+### Prettier Configuration
+
+```json .prettierrc
+{
+  "semi": true,
+  "singleQuote": true,
+  "tabWidth": 2,
+  "printWidth": 100,
+  "trailingComma": "es5",
+  "arrowParens": "always"
+}
+```
+
+## Git Standards
+
+### Commit Messages
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```bash
+feat(admin): add user export to Excel
+fix(login): correct validation for institutional IDs
+refactor(repositories): simplify query structure
+docs(readme): update installation instructions
+test(user): add tests for blocking logic
+chore(deps): update dependencies
+```
+
+### Branch Names
+
+```bash
+feature/add-pdf-export
+fix/user-blocking-logic
+improve/query-performance
+refactor/admin-dashboard
+docs/update-contributing-guide
+test/add-integration-tests
+```
+
+## Code Review Checklist
+
+<AccordionGroup>
+  <Accordion title="Functionality">
+    - [ ] Code works as expected
+    - [ ] Edge cases handled
+    - [ ] No breaking changes
+    - [ ] Error handling implemented
+  </Accordion>
+
+  <Accordion title="Code Quality">
+    - [ ] Follows Clean Architecture
+    - [ ] No code duplication
+    - [ ] Functions are small and focused
+    - [ ] Names are descriptive
+    - [ ] Comments explain complex logic
+  </Accordion>
+
+  <Accordion title="Testing">
+    - [ ] Tests included
+    - [ ] Tests pass
+    - [ ] Good test coverage
+    - [ ] Edge cases tested
+  </Accordion>
+
+  <Accordion title="Performance">
+    - [ ] No performance regressions
+    - [ ] Efficient algorithms
+    - [ ] Proper memoization
+    - [ ] Database queries optimized
+  </Accordion>
+
+  <Accordion title="Security">
+    - [ ] Input validated
+    - [ ] No sensitive data exposed
+    - [ ] Authentication checked
+    - [ ] SQL injection prevented
+  </Accordion>
+</AccordionGroup>
+
+## Resources
+
+- [Clean Code by Robert C. Martin](https://www.oreilly.com/library/view/clean-code-a/9780136083238/)
+- [React Best Practices](https://react.dev/learn)
+- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
+- [Conventional Commits](https://www.conventionalcommits.org/)
+
+## Related Documentation
+
+- [Clean Architecture](/development/clean-architecture)
+- [Frontend Architecture](/development/frontend-architecture)
+- [Testing Guide](/development/testing)
+- [Contributing Guidelines](/development/contributing)

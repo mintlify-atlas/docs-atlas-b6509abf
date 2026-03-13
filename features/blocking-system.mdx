@@ -1,0 +1,585 @@
+---
+title: Automatic Blocking System
+description: How users are automatically blocked and unblocked
+---
+
+# Automatic Blocking System
+
+The UCC Control de Acceso system automatically blocks users based on failure thresholds to prevent abuse and ensure security.
+
+## How Blocking Works
+
+Blocking is an **automatic, rule-based** system that restricts user access when certain conditions are met.
+
+<Info>
+  When blocked, users cannot register contingent entries and must visit administration to be unblocked.
+</Info>
+
+## Blocking Triggers
+
+<Tabs>
+  <Tab title="4 Olvido Failures">
+    **Trigger**: User accumulates 4 "olvido" (forgot card) incidents
+
+    **When It Happens**:
+    ```sql
+    -- After 4th failure insertion:
+    INSERT INTO fallas (id_institucional, motivo) VALUES ('80123456', 'olvido');
+    
+    -- Trigger automatically executes:
+    UPDATE usuarios 
+    SET total_fallas = 4,
+        acceso = 'bloqueado'
+    WHERE id_institucional = '80123456';
+    ```
+
+    **User Experience**:
+    ```
+    Login attempt → Profile loads → Shows "USUARIO BLOQUEADO"
+    Message: "Has acumulado 4 fallas por olvido"
+    Action: "Diríjase a la Dirección para desbloqueo"
+    ```
+
+    **Rationale**: 4 incidents suggest pattern of irresponsibility or potential abuse.
+  </Tab>
+
+  <Tab title="Perdida (Lost Card)">
+    **Trigger**: User reports TIC as lost
+
+    **When It Happens**:
+    ```sql
+    -- User selects "Perdida" reason:
+    INSERT INTO fallas (id_institucional, motivo) VALUES ('80123456', 'perdida');
+    
+    -- Immediate blocking (regardless of previous failure count):
+    UPDATE usuarios SET acceso = 'bloqueado' WHERE id_institucional = '80123456';
+    ```
+
+    **User Experience**:
+    ```
+    Select "PERDIDA" → Immediate block
+    Message: "TIC reportada como PERDIDA - bloqueado automáticamente"
+    Action: "Solicite reposición en la Dirección"
+    ```
+
+    **Rationale**: Lost cards are security risks - someone else could use them.
+  </Tab>
+</Tabs>
+
+## User States
+
+Users can be in one of two states:
+
+<CardGroup cols={2}>
+  <Card title="Activo" icon="circle-check">
+    **State**: `acceso = 'activo'`
+    
+    **Permissions**:
+    - Can login to system
+    - Can register contingent entry
+    - Failure counter visible
+    - Access granted (with warnings)
+
+    **Database**:
+    ```sql
+    SELECT * FROM usuarios WHERE acceso = 'activo';
+    ```
+  </Card>
+  
+  <Card title="Bloqueado" icon="ban">
+    **State**: `acceso = 'bloqueado'`
+    
+    **Restrictions**:
+    - Can still login (to see blocked status)
+    - CANNOT register new entry
+    - Must visit administration
+    - Requires manual unblocking
+
+    **Database**:
+    ```sql
+    SELECT * FROM usuarios WHERE acceso = 'bloqueado';
+    ```
+  </Card>
+</CardGroup>
+
+## Blocking Mechanism
+
+The blocking system is enforced at multiple levels:
+
+<Steps>
+  <Step title="Database Level">
+    The `acceso` column uses an ENUM type:
+    ```sql
+    CREATE TYPE estado_de_acceso AS ENUM ('activo', 'bloqueado');
+    
+    CREATE TABLE usuarios (
+        ...
+        acceso estado_de_acceso NOT NULL DEFAULT 'activo',
+        ...
+    );
+    ```
+  </Step>
+
+  <Step title="Trigger Level">
+    Database trigger automatically sets `acceso = 'bloqueado'` when threshold reached:
+    ```sql
+    UPDATE usuarios
+    SET acceso = CASE WHEN v_total >= 4 THEN 'bloqueado' ELSE acceso END
+    WHERE id_institucional = v_id_inst;
+    ```
+  </Step>
+
+  <Step title="Application Level">
+    Frontend checks user status and prevents actions:
+    ```jsx
+    if (user.acceso === 'bloqueado') {
+      return <BlockedUserScreen user={user} />;
+    }
+    ```
+  </Step>
+
+  <Step title="Business Logic Level">
+    Use cases validate user status before allowing operations:
+    ```javascript
+    if (user.acceso === 'bloqueado') {
+      throw new BlockedUserError('Usuario bloqueado');
+    }
+    ```
+  </Step>
+</Steps>
+
+## Unblocking Process
+
+Blocked users can be unblocked by administrators:
+
+<Tabs>
+  <Tab title="Manual Unblock">
+    **Who Can Unblock**: Administrators with proper permissions
+
+    **Steps**:
+    <Steps>
+      <Step title="Admin Searches User">
+        Admin searches for blocked user in admin panel
+      </Step>
+      <Step title="Review Failure History">
+        Admin reviews failure history and reason for blocking
+      </Step>
+      <Step title="Click Unblock">
+        Admin clicks "Desbloquear Usuario" button
+      </Step>
+      <Step title="Enter Justification">
+        Admin MUST enter reason for unblocking (mandatory field)
+      </Step>
+      <Step title="Confirm Action">
+        System shows confirmation dialog
+      </Step>
+      <Step title="Execute Unblock">
+        System executes unblock and logs action
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="SQL Command">
+    ```sql
+    -- Admin unblock with reset
+    UPDATE usuarios
+    SET acceso = 'activo',
+        total_fallas = 0  -- Reset counter
+    WHERE id_institucional = '80123456';
+
+    -- Optional: Delete failure records
+    -- (Usually kept for audit trail)
+    DELETE FROM fallas WHERE id_institucional = '80123456';
+    ```
+
+    <Warning>
+      Direct SQL updates bypass audit logging. Use admin panel for proper accountability.
+    </Warning>
+  </Tab>
+
+  <Tab title="Application Code">
+    ```javascript
+    // File: src/modules/admin/domain/usecases/UnblockUserUseCase.js
+    export class UnblockUserUseCase {
+      async execute(institutionalId, adminId, justification) {
+        // Validate justification
+        if (!justification || justification.trim().length < 10) {
+          throw new Error('Justificación requerida (mínimo 10 caracteres)');
+        }
+
+        // Unblock user
+        await this.userRepository.unblock(institutionalId);
+        
+        // Reset failure count
+        await this.userRepository.resetFailureCount(institutionalId);
+        
+        // Log audit trail
+        await this.auditRepository.log({
+          action: 'UNBLOCK_USER',
+          user_id: institutionalId,
+          admin_id: adminId,
+          justification: justification,
+          timestamp: new Date()
+        });
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Unblock Effects
+
+When a user is unblocked:
+
+<AccordionGroup>
+  <Accordion title="Status Changes">
+    **Before Unblock**:
+    ```sql
+    id_institucional | acceso    | total_fallas
+    80123456        | bloqueado | 4
+    ```
+
+    **After Unblock**:
+    ```sql
+    id_institucional | acceso  | total_fallas
+    80123456        | activo  | 0
+    ```
+
+    Both `acceso` and `total_fallas` are reset.
+  </Accordion>
+
+  <Accordion title="Failure History Preserved">
+    **Failure records are NOT deleted** (for audit trail):
+    ```sql
+    -- Failures remain in fallas table
+    SELECT * FROM fallas WHERE id_institucional = '80123456';
+    -- Still shows all 4 historical failures
+    ```
+
+    But `total_fallas` counter in `usuarios` is reset to 0.
+  </Accordion>
+
+  <Accordion title="Immediate Access Restored">
+    User can immediately:
+    - Login to system
+    - Register new contingent entries
+    - Start accumulating failures again (from 0/4)
+  </Accordion>
+</AccordionGroup>
+
+## UI Components
+
+### Blocked User Screen
+
+```jsx
+// File: src/modules/user-profile/presentation/components/BlockedUserScreen.jsx
+export const BlockedUserScreen = ({ user }) => {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-red-50">
+      <div className="bg-white p-8 rounded-lg shadow-lg max-w-md">
+        <div className="flex items-center justify-center mb-6">
+          <BanIcon className="w-16 h-16 text-red-600" />
+        </div>
+        
+        <h1 className="text-3xl font-bold text-red-600 text-center mb-4">
+          USUARIO BLOQUEADO
+        </h1>
+        
+        <div className="bg-red-100 border border-red-400 p-4 rounded mb-6">
+          <p className="font-semibold">Motivo del bloqueo:</p>
+          <p>
+            {user.total_fallas >= 4 
+              ? `Has acumulado ${user.total_fallas} fallas por olvido de carnet`
+              : 'TIC reportada como perdida'}
+          </p>
+        </div>
+        
+        <div className="bg-blue-50 border border-blue-400 p-4 rounded">
+          <p className="font-semibold mb-2">Qué hacer:</p>
+          <ul className="list-disc list-inside space-y-1">
+            <li>Dirígete a la Dirección</li>
+            <li>Presenta tu documento de identidad</li>
+            <li>Solicita el desbloqueo de tu cuenta</li>
+            {user.total_fallas < 4 && (
+              <li>Solicita reposición de tu TIC</li>
+            )}
+          </ul>
+        </div>
+        
+        <button 
+          onClick={() => window.location.href = '/'}
+          className="w-full mt-6 bg-ucc-azul-primary text-white py-2 rounded"
+        >
+          Volver al inicio
+        </button>
+      </div>
+    </div>
+  );
+};
+```
+
+### Admin Unblock Interface
+
+```jsx
+// File: src/modules/admin/presentation/components/UnblockUserModal.jsx
+export const UnblockUserModal = ({ user, onUnblock, onCancel }) => {
+  const [justification, setJustification] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleUnblock = async () => {
+    if (justification.trim().length < 10) {
+      alert('Justificación debe tener al menos 10 caracteres');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await onUnblock(user.id_institucional, justification);
+      alert('Usuario desbloqueado exitosamente');
+    } catch (error) {
+      alert('Error al desbloquear: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal>
+      <h2 className="text-xl font-bold mb-4">Desbloquear Usuario</h2>
+      
+      <div className="mb-4">
+        <p><strong>Nombre:</strong> {user.nombre_completo}</p>
+        <p><strong>ID:</strong> {user.id_institucional}</p>
+        <p><strong>Fallas:</strong> {user.total_fallas}/4</p>
+      </div>
+      
+      <div className="mb-4">
+        <label className="block font-semibold mb-2">
+          Justificación del desbloqueo (obligatorio):
+        </label>
+        <textarea
+          value={justification}
+          onChange={(e) => setJustification(e.target.value)}
+          rows={4}
+          className="w-full border rounded p-2"
+          placeholder="Explique el motivo del desbloqueo..."
+        />
+        <p className="text-sm text-gray-600 mt-1">
+          {justification.length}/10 caracteres mínimo
+        </p>
+      </div>
+      
+      <div className="flex gap-2">
+        <button
+          onClick={handleUnblock}
+          disabled={loading || justification.trim().length < 10}
+          className="bg-green-600 text-white px-4 py-2 rounded disabled:opacity-50"
+        >
+          {loading ? 'Desbloqueando...' : 'Desbloquear'}
+        </button>
+        <button
+          onClick={onCancel}
+          className="bg-gray-400 text-white px-4 py-2 rounded"
+        >
+          Cancelar
+        </button>
+      </div>
+    </Modal>
+  );
+};
+```
+
+## Dashboard Metrics
+
+The admin dashboard displays blocking statistics:
+
+```sql
+-- Current blocked users
+SELECT COUNT(*) as bloqueados
+FROM usuarios
+WHERE acceso = 'bloqueado';
+
+-- Users at risk (3 failures)
+SELECT COUNT(*) as en_riesgo
+FROM usuarios
+WHERE total_fallas = 3 AND acceso = 'activo';
+
+-- Recent blockings (last 7 days)
+SELECT 
+    u.id_institucional,
+    u.nombre_completo,
+    u.total_fallas,
+    MAX(f.fecha_hora) as fecha_bloqueo
+FROM usuarios u
+JOIN fallas f ON u.id_institucional = f.id_institucional
+WHERE u.acceso = 'bloqueado'
+    AND f.fecha_hora >= NOW() - INTERVAL '7 days'
+GROUP BY u.id_institucional, u.nombre_completo, u.total_fallas;
+```
+
+## Business Rules
+
+<AccordionGroup>
+  <Accordion title="Blocking is Automatic">
+    **Rule**: System automatically blocks - no human intervention needed
+
+    **Implementation**: Database trigger handles blocking logic
+
+    **Benefits**:
+    - Consistent enforcement
+    - No human error
+    - Immediate effect
+    - Cannot be bypassed
+  </Accordion>
+
+  <Accordion title="Unblocking is Manual">
+    **Rule**: Only admins can unblock users
+
+    **Implementation**: Requires admin login and justification
+
+    **Benefits**:
+    - Prevents abuse
+    - Ensures accountability
+    - Maintains audit trail
+    - Case-by-case review
+  </Accordion>
+
+  <Accordion title="Counter Reset on Unblock">
+    **Rule**: Unblocking resets `total_fallas` to 0
+
+    **Implementation**: UPDATE sets both `acceso` and `total_fallas`
+
+    **Rationale**: Fresh start after admin review
+
+    **History Preserved**: Original failure records remain in `fallas` table
+  </Accordion>
+
+  <Accordion title="Semester Reset">
+    **Rule**: All blocks cleared at semester start
+
+    **Implementation**: Semester transition process resets all users to `activo`
+
+    **Rationale**: New semester = fresh start for all users
+  </Accordion>
+</AccordionGroup>
+
+## Audit Trail
+
+All unblocking actions should be logged:
+
+```sql
+-- Audit table structure (future implementation)
+CREATE TABLE audit_desbloqueos (
+    id BIGSERIAL PRIMARY KEY,
+    user_id_institucional VARCHAR(20) NOT NULL,
+    admin_id_institucional VARCHAR(20) NOT NULL,
+    fecha_hora TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    justificacion TEXT NOT NULL,
+    fallas_previas INT NOT NULL
+);
+
+-- Log unblock action
+INSERT INTO audit_desbloqueos 
+    (user_id_institucional, admin_id_institucional, justificacion, fallas_previas)
+VALUES 
+    ('80123456', '80ADMIN1', 'Usuario presentó nueva TIC', 4);
+```
+
+## Testing Scenarios
+
+<CodeGroup>
+```sql Test Auto-Block
+-- Create test user
+INSERT INTO usuarios (id_institucional, documento_identidad, nombre_completo)
+VALUES ('80BLOCK1', '1111111111', 'Usuario Test Bloqueo');
+
+-- Insert 4 failures
+INSERT INTO fallas (id_institucional, motivo) 
+VALUES 
+    ('80BLOCK1', 'olvido'),
+    ('80BLOCK1', 'olvido'),
+    ('80BLOCK1', 'olvido'),
+    ('80BLOCK1', 'olvido');
+
+-- Verify blocked
+SELECT acceso, total_fallas FROM usuarios WHERE id_institucional = '80BLOCK1';
+-- Expected: bloqueado | 4
+```
+
+```sql Test Unblock
+-- Unblock user
+UPDATE usuarios
+SET acceso = 'activo', total_fallas = 0
+WHERE id_institucional = '80BLOCK1';
+
+-- Verify unblocked
+SELECT acceso, total_fallas FROM usuarios WHERE id_institucional = '80BLOCK1';
+-- Expected: activo | 0
+
+-- Verify history preserved
+SELECT COUNT(*) FROM fallas WHERE id_institucional = '80BLOCK1';
+-- Expected: 4 (records still exist)
+```
+
+```sql Test Lost Card Block
+-- Create user with 0 failures
+INSERT INTO usuarios (id_institucional, documento_identidad, nombre_completo)
+VALUES ('80LOST1', '2222222222', 'Usuario Perdida');
+
+-- Report lost card (immediate block)
+INSERT INTO fallas (id_institucional, motivo) VALUES ('80LOST1', 'perdida');
+
+-- Verify blocked with only 1 failure
+SELECT acceso, total_fallas FROM usuarios WHERE id_institucional = '80LOST1';
+-- Expected: bloqueado | 1
+```
+</CodeGroup>
+
+## Statistics and Monitoring
+
+### Blocked Users by Reason
+
+```sql
+SELECT 
+    CASE 
+        WHEN u.total_fallas >= 4 THEN 'Olvido (4+ fallas)'
+        WHEN EXISTS (
+            SELECT 1 FROM fallas f 
+            WHERE f.id_institucional = u.id_institucional 
+            AND f.motivo = 'perdida'
+        ) THEN 'Perdida'
+        ELSE 'Otro'
+    END as motivo_bloqueo,
+    COUNT(*) as cantidad
+FROM usuarios u
+WHERE u.acceso = 'bloqueado'
+GROUP BY motivo_bloqueo;
+```
+
+### Average Time to Unblock
+
+```sql
+-- Requires audit table implementation
+SELECT 
+    AVG(EXTRACT(EPOCH FROM (a.fecha_hora - MAX(f.fecha_hora))) / 3600) as horas_promedio
+FROM audit_desbloqueos a
+JOIN fallas f ON a.user_id_institucional = f.id_institucional
+GROUP BY a.id;
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="User Workflows" icon="users" href="/user-guide/student-flow">
+    See complete user flows
+  </Card>
+  <Card title="Admin User Management" icon="users-gear" href="/admin/user-management">
+    Learn admin unblock process
+  </Card>
+  <Card title="Reporting TIC Issues" icon="id-card" href="/user-guide/reporting-tic">
+    How to report lost cards
+  </Card>
+  <Card title="Admin Dashboard" icon="gauge" href="/admin/dashboard">
+    View blocking metrics
+  </Card>
+</CardGroup>

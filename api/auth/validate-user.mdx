@@ -1,0 +1,101 @@
+---
+title: 'Validate User Exists'
+description: 'Check if an institutional ID exists in the system'
+---
+
+## GET /api/auth/validate-user/:id
+
+Checks whether a user with the specified institutional ID exists in the database. This is a lightweight endpoint that returns the user entity without performing access control checks.
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The institutional ID to look up
+</ParamField>
+
+### Response
+
+<ResponseField name="user" type="object" nullable>
+  Returns the user object if found, or `null` if not found
+  
+  <Expandable title="User object properties">
+    <ResponseField name="id" type="integer">
+      Database primary key
+    </ResponseField>
+    
+    <ResponseField name="idInstitucional" type="string">
+      Institutional ID
+    </ResponseField>
+    
+    <ResponseField name="documentoIdentidad" type="string">
+      National identity document number
+    </ResponseField>
+    
+    <ResponseField name="nombreCompleto" type="string">
+      Full name of the user
+    </ResponseField>
+    
+    <ResponseField name="acceso" type="string">
+      Access status: `"activo"` or `"bloqueado"`
+    </ResponseField>
+    
+    <ResponseField name="totalFallas" type="integer">
+      Total number of access failures (0-4)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Response Examples
+
+**User Found (200 OK)**
+
+```json
+{
+  "user": {
+    "id": 42,
+    "idInstitucional": "123456789",
+    "documentoIdentidad": "1234567890",
+    "nombreCompleto": "María González López",
+    "acceso": "activo",
+    "totalFallas": 0
+  }
+}
+```
+
+**User Not Found (200 OK)**
+
+```json
+{
+  "user": null
+}
+```
+
+<Note>
+  This endpoint returns `200 OK` even when the user is not found. Check the `user` field for `null` to determine if the ID exists.
+</Note>
+
+### Implementation Details
+
+**Source:** `src/modules/login/infrastructure/repositories/AuthRepositoryImpl.js:11-33`
+
+Queries the `usuarios` table using:
+
+```javascript
+await supabase
+  .from('usuarios')
+  .select('*')
+  .eq('id_institucional', idInstitucional)
+  .single();
+```
+
+Returns `null` if:
+- No rows are found (Supabase error code `PGRST116`)
+- Database error occurs
+
+### Difference from Login Endpoint
+
+Unlike `/api/auth/login`, this endpoint:
+- Does not validate ID format
+- Does not check if user is blocked
+- Does not return error messages
+- Simply returns the user object or null

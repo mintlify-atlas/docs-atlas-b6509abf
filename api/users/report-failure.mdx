@@ -1,0 +1,126 @@
+---
+title: 'Report Access Failure'
+description: 'Register an access card failure for a user'
+---
+
+## POST /api/registro-falla
+
+Registers an access failure (forgot card or lost card) for a user. This increments their failure count and may result in automatic blocking if they reach the limit.
+
+### Request Body
+
+<ParamField body="idInstitucional" type="string" required>
+  The institutional ID of the user reporting the failure
+</ParamField>
+
+<ParamField body="motivo" type="string" required>
+  Reason for the access failure
+  
+  Must be one of:
+  - `"olvido"` - User forgot their access card
+  - `"perdida"` - User lost their access card
+</ParamField>
+
+### Request Example
+
+```json
+{
+  "idInstitucional": "123456789",
+  "motivo": "olvido"
+}
+```
+
+### Response
+
+**Success (201 Created)**
+
+```json
+{
+  "success": true,
+  "message": "Falla registrada exitosamente"
+}
+```
+
+**Error Response - User Already Blocked (403 Forbidden)**
+
+```json
+{
+  "success": false,
+  "error": "El usuario está bloqueado y no puede registrar más fallas."
+}
+```
+
+**Error Response - Limit Reached (400 Bad Request)**
+
+```json
+{
+  "success": false,
+  "error": "El usuario ya alcanzó el límite de 4 fallas."
+}
+```
+
+### Error Codes
+
+| Status Code | Description |
+|------------|-------------|
+| 201 | Failure registered successfully |
+| 400 | User has already reached the 4-failure limit |
+| 403 | User is blocked |
+| 500 | Database error |
+
+<Warning>
+  This endpoint validates that:
+  1. The user is not already blocked (`acceso !== 'bloqueado'`)
+  2. The user has not reached the 4-failure limit (`total_fallas < 4`)
+  
+  If validation fails, the failure is NOT registered and an error is returned.
+</Warning>
+
+<Note>
+  **Automatic Blocking:** When a user accumulates 4 failures, a database trigger automatically sets their `acceso` status to `"bloqueado"`. The trigger `fn_actualizar_fallas` handles this logic.
+</Note>
+
+### Implementation Details
+
+**Source:** `src/modules/user-profile/infrastructure/repositories/UserProfileRepositoryImpl.js:49`
+
+The registration process:
+
+1. **Validate User Status**
+   ```javascript
+   await supabase
+     .from('usuarios')
+     .select('acceso, total_fallas')
+     .eq('id_institucional', idInstitucional)
+     .single()
+   ```
+   - Checks if `acceso === 'bloqueado'` → throw error
+   - Checks if `total_fallas >= 4` → throw error
+
+2. **Insert Failure Record**
+   ```javascript
+   await supabase
+     .from('fallas')
+     .insert({ id_institucional, motivo })
+   ```
+
+3. **Automatic Updates (via database trigger)**
+   - Trigger `fn_actualizar_fallas` increments `total_fallas` in the `usuarios` table
+   - If `total_fallas` reaches 4, trigger sets `acceso = 'bloqueado'`
+
+### Business Rules
+
+- Users can have a maximum of 4 failures
+- The 4th failure automatically blocks the user
+- Blocked users cannot register additional failures
+- Only administrators can unblock users (see [Unblock User API](/api/admin/unblock-user))
+- When unblocked, all failure records are deleted and the counter resets to 0
+
+### Failure Tracking
+
+Failure records are used for:
+- Dashboard statistics
+- User profile display
+- Reporting and analytics
+- Identifying patterns (forgot vs. lost)
+- Period-based reports

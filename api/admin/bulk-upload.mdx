@@ -1,0 +1,278 @@
+---
+title: 'Bulk Upload CSV'
+description: 'Upload CSV files to create or update users in bulk'
+---
+
+## POST /api/admin/carga-csv
+
+Uploads and processes CSV files to create or update users, roles, and role-specific information in bulk. Supports three types of uploads: base users, students, employees, and contractors.
+
+### Request Body
+
+<ParamField body="tipo" type="string" required>
+  Type of CSV upload
+  
+  Valid values:
+  - `"usuarios"` - Base user data (ID, document, name)
+  - `"estudiantes"` - Student data (ID + academic program)
+  - `"empleados"` - Employee data (ID + position + department)
+  - `"contratistas"` - Contractor data (ID + company)
+</ParamField>
+
+<ParamField body="registros" type="array" required>
+  Array of records parsed from the CSV file
+  
+  Each object must contain fields specific to the upload type (see examples below).
+</ParamField>
+
+### Upload Types
+
+#### Type: `"usuarios"` (Base Users)
+
+Creates or updates base user records. This should be uploaded first before assigning roles.
+
+**Required fields per record:**
+- `id_institucional` (string) - Institutional ID
+- `documento_identidad` (string) - National ID document
+- `nombre_completo` (string) - Full name
+
+**Example request:**
+
+```json
+{
+  "tipo": "usuarios",
+  "registros": [
+    {
+      "id_institucional": "123456789",
+      "documento_identidad": "1234567890",
+      "nombre_completo": "Juan Pérez García"
+    },
+    {
+      "id_institucional": "987654321",
+      "documento_identidad": "9876543210",
+      "nombre_completo": "María González López"
+    }
+  ]
+}
+```
+
+#### Type: `"estudiantes"` (Students)
+
+Creates student role assignments and academic program information.
+
+**Required fields per record:**
+- `id_institucional` (string) - Must already exist in `usuarios` table
+- `programa_academico` (string, optional) - Academic program name
+
+**Example request:**
+
+```json
+{
+  "tipo": "estudiantes",
+  "registros": [
+    {
+      "id_institucional": "123456789",
+      "programa_academico": "Ingeniería de Sistemas"
+    },
+    {
+      "id_institucional": "111222333",
+      "programa_academico": "Administración de Empresas"
+    }
+  ]
+}
+```
+
+#### Type: `"empleados"` (Employees)
+
+Creates employee role assignments with job title and department.
+
+**Required fields per record:**
+- `id_institucional` (string) - Must already exist in `usuarios` table
+- `cargo` (string, optional) - Job title/position
+- `dependencia` (string, optional) - Department or organizational unit
+
+**Example request:**
+
+```json
+{
+  "tipo": "empleados",
+  "registros": [
+    {
+      "id_institucional": "987654321",
+      "cargo": "Analista de Sistemas",
+      "dependencia": "TIC"
+    },
+    {
+      "id_institucional": "555666777",
+      "cargo": "Coordinador Académico",
+      "dependencia": "Facultad de Ingeniería"
+    }
+  ]
+}
+```
+
+#### Type: `"contratistas"` (Contractors)
+
+Creates contractor role assignments with company information.
+
+**Required fields per record:**
+- `id_institucional` (string) - Must already exist in `usuarios` table
+- `empresa` (string, optional) - Contracting company name
+
+**Example request:**
+
+```json
+{
+  "tipo": "contratistas",
+  "registros": [
+    {
+      "id_institucional": "888999000",
+      "empresa": "Servicios Generales S.A."
+    },
+    {
+      "id_institucional": "444555666",
+      "empresa": "Mantenimiento y Aseo Ltda."
+    }
+  ]
+}
+```
+
+### Response
+
+**Success (200 OK)**
+
+```json
+{
+  "success": true,
+  "insertados": 42,
+  "message": "Registros cargados exitosamente"
+}
+```
+
+**Error Response (500 Internal Server Error)**
+
+```json
+{
+  "success": false,
+  "error": "Error message from database or validation"
+}
+```
+
+### Implementation Details
+
+**Source:** `src/modules/admin/infrastructure/repositories/AdminRepositoryImpl.js`
+
+Each upload type has a dedicated method:
+
+#### `cargarUsuarios()` (line 211)
+
+```javascript
+const data = registros.map(r => ({
+  id_institucional:    r.id_institucional,
+  documento_identidad: r.documento_identidad,
+  nombre_completo:     r.nombre_completo,
+  acceso:              'activo',
+  total_fallas:        0,
+}));
+await supabase
+  .from('usuarios')
+  .upsert(data, { onConflict: 'id_institucional' });
+```
+
+#### `cargarEstudiantes()` (line 227)
+
+1. Inserts/updates `info_estudiante` table with program data
+2. Looks up the "Estudiante" role ID
+3. Creates `usuario_roles` relationships using upsert
+
+#### `cargarEmpleados()` (line 242)
+
+1. Inserts/updates `info_empleado` table with position and department
+2. Looks up the "Empleado" role ID
+3. Creates `usuario_roles` relationships
+
+#### `cargarContratistas()` (line 258)
+
+1. Inserts/updates `info_contratista` table with company
+2. Looks up the "Contratista" role ID
+3. Creates `usuario_roles` relationships
+
+### Upsert Behavior
+
+All bulk upload operations use **upsert** (insert or update) based on the conflict key:
+
+- **usuarios**: Conflict on `id_institucional`
+- **info_estudiante**: Conflict on `id_institucional`
+- **info_empleado**: Conflict on `id_institucional`
+- **info_contratista**: Conflict on `id_institucional`
+- **usuario_roles**: Conflict on `(id_institucional, rol_id)`
+
+This means:
+- New records are inserted
+- Existing records are updated with new data
+- No duplicates are created
+
+<Note>
+  **Recommended Upload Order:**
+  1. First upload base users (`"usuarios"`)
+  2. Then upload role-specific data (`"estudiantes"`, `"empleados"`, `"contratistas"`)
+  
+  This ensures foreign key constraints are satisfied.
+</Note>
+
+### Multiple Roles
+
+A single user can have multiple roles by uploading their ID in different role CSV files:
+
+1. Upload their base data in `"usuarios"`
+2. Upload them in `"estudiantes"` CSV
+3. Upload them in `"empleados"` CSV
+
+They will then have both "Estudiante" and "Empleado" roles.
+
+### Error Handling
+
+Common errors:
+
+| Error | Cause |
+|-------|-------|
+| `Rol "X" no encontrado` | Role doesn't exist in `roles` table |
+| `Error upsert usuarios` | Validation failed or DB constraint violated |
+| `Error info_estudiante` | Invalid data for student table |
+| Foreign key constraint | User doesn't exist in `usuarios` table |
+
+<Warning>
+  Role-specific uploads require that the user already exists in the `usuarios` table. Attempting to assign a role to a non-existent user will fail with a foreign key constraint error.
+</Warning>
+
+### CSV Format Guidelines
+
+While this is a JSON API, the frontend typically parses CSV files and sends them as JSON. Expected CSV formats:
+
+**usuarios.csv**
+```csv
+id_institucional,documento_identidad,nombre_completo
+123456789,1234567890,Juan Pérez García
+987654321,9876543210,María González López
+```
+
+**estudiantes.csv**
+```csv
+id_institucional,programa_academico
+123456789,Ingeniería de Sistemas
+111222333,Administración de Empresas
+```
+
+**empleados.csv**
+```csv
+id_institucional,cargo,dependencia
+987654321,Analista de Sistemas,TIC
+555666777,Coordinador Académico,Facultad de Ingeniería
+```
+
+**contratistas.csv**
+```csv
+id_institucional,empresa
+888999000,Servicios Generales S.A.
+444555666,Mantenimiento y Aseo Ltda.
+```

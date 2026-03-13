@@ -1,0 +1,593 @@
+---
+title: Multi-Role System
+description: Support for users with multiple simultaneous roles
+---
+
+# Multi-Role System
+
+The UCC Control de Acceso system supports users who have **multiple roles simultaneously**, such as a student who also works as an employee.
+
+## Why Multi-Role?
+
+In a university environment, it's common for individuals to have multiple affiliations:
+
+<CardGroup cols={3}>
+  <Card title="Student + Employee" icon="graduation-cap">
+    Undergraduate student working in administration
+  </Card>
+  <Card title="Employee + Student" icon="briefcase">
+    Staff member pursuing a degree
+  </Card>
+  <Card title="Contractor + Student" icon="user-tie">
+    External contractor also enrolled in programs
+  </Card>
+</CardGroup>
+
+## Available Roles
+
+The system defines three primary roles:
+
+<Tabs>
+  <Tab title="Estudiante (Student)">
+    **Role ID**: 1
+    
+    **Characteristics**:
+    - Enrolled in an academic program
+    - Has program information in `info_estudiante` table
+    - Subject to academic calendar
+    - Data refreshed each semester
+
+    **Information Displayed**:
+    - Academic program (e.g., "Ingeniería de Sistemas")
+
+    ```sql
+    SELECT ie.programa
+    FROM info_estudiante ie
+    WHERE ie.id_institucional = '80123456';
+    ```
+  </Tab>
+
+  <Tab title="Empleado (Employee)">
+    **Role ID**: 2
+    
+    **Characteristics**:
+    - Direct UCC staff member
+    - Has employment info in `info_empleado` table
+    - Continuous employment relationship
+    - Updated by HR when hired/terminated
+
+    **Information Displayed**:
+    - Job title (e.g., "Coordinador")
+    - Department (e.g., "Tesorería")
+
+    ```sql
+    SELECT iem.cargo, iem.dependencia
+    FROM info_empleado iem
+    WHERE iem.id_institucional = '80123456';
+    ```
+  </Tab>
+
+  <Tab title="Contratista (Contractor)">
+    **Role ID**: 3
+    
+    **Characteristics**:
+    - External service provider
+    - Has company info in `info_contratista` table
+    - Temporary relationship with contract dates
+    - Updated by Contracts department
+
+    **Information Displayed**:
+    - Company name (e.g., "ACME Services SAS")
+
+    ```sql
+    SELECT ic.empresa
+    FROM info_contratista ic
+    WHERE ic.id_institucional = '80123456';
+    ```
+  </Tab>
+</Tabs>
+
+## Database Schema
+
+The multi-role system uses a **many-to-many relationship** implemented through a junction table:
+
+```sql
+Table usuarios {
+  id bigint [pk]
+  id_institucional varchar [unique]
+  nombre_completo varchar
+}
+
+Table roles {
+  id bigint [pk]
+  nombre_rol varchar [unique]  // Estudiante, Empleado, Contratista
+}
+
+Table usuario_roles {
+  id bigint [pk]
+  id_institucional varchar [ref: > usuarios.id_institucional]
+  rol_id bigint [ref: > roles.id]
+}
+```
+
+### Junction Table Design
+
+<Info>
+  The `usuario_roles` table uses `id_institucional` (not the internal `id`) as the foreign key for easier CSV imports during semester transitions.
+</Info>
+
+```sql
+CREATE TABLE usuario_roles (
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_institucional VARCHAR(20) NOT NULL 
+                     REFERENCES usuarios(id_institucional) ON DELETE CASCADE,
+    rol_id           BIGINT NOT NULL 
+                     REFERENCES roles(id),
+    
+    CONSTRAINT uq_usuario_rol UNIQUE (id_institucional, rol_id)
+);
+```
+
+**Key Features**:
+- `UNIQUE` constraint prevents duplicate role assignments
+- `CASCADE DELETE` removes roles when user is deleted
+- Indexed for fast lookups
+
+## Automatic Role Assignment
+
+Roles are assigned **automatically via database triggers** when data is inserted into role-specific tables:
+
+<Steps>
+  <Step title="Insert User">
+    Create the base user record:
+    ```sql
+    INSERT INTO usuarios (id_institucional, documento_identidad, nombre_completo)
+    VALUES ('80123456', '1234567890', 'Juan Pérez');
+    ```
+  </Step>
+
+  <Step title="Add Student Info">
+    Insert student information:
+    ```sql
+    INSERT INTO info_estudiante (id_institucional, programa)
+    VALUES ('80123456', 'Derecho');
+    ```
+    
+    **Trigger fires**: `trg_info_estudiante_insert`
+    
+    **Result**: Row inserted in `usuario_roles` with `rol_id = 1`
+  </Step>
+
+  <Step title="Add Employee Info">
+    Insert employee information:
+    ```sql
+    INSERT INTO info_empleado (id_institucional, cargo, dependencia)
+    VALUES ('80123456', 'Asistente', 'Biblioteca');
+    ```
+    
+    **Trigger fires**: `trg_info_empleado_insert`
+    
+    **Result**: Second row inserted in `usuario_roles` with `rol_id = 2`
+  </Step>
+
+  <Step title="User Now Has Two Roles">
+    Query the user's roles:
+    ```sql
+    SELECT r.nombre_rol
+    FROM usuario_roles ur
+    JOIN roles r ON ur.rol_id = r.id
+    WHERE ur.id_institucional = '80123456';
+    
+    -- Result:
+    -- Estudiante
+    -- Empleado
+    ```
+  </Step>
+</Steps>
+
+### Trigger Implementation
+
+```sql
+-- File: 06_triggers_roles.sql
+
+-- Trigger for student role
+CREATE OR REPLACE FUNCTION fn_asignar_rol_estudiante()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    INSERT INTO usuario_roles (id_institucional, rol_id)
+    VALUES (NEW.id_institucional, 1)  -- 1 = Estudiante
+    ON CONFLICT (id_institucional, rol_id) DO NOTHING;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_info_estudiante_insert
+    AFTER INSERT ON info_estudiante
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_asignar_rol_estudiante();
+
+-- Trigger for revoking student role
+CREATE TRIGGER trg_info_estudiante_delete
+    AFTER DELETE ON info_estudiante
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_revocar_rol_estudiante();
+```
+
+<Note>
+  The `ON CONFLICT DO NOTHING` clause prevents errors if the role is already assigned.
+</Note>
+
+## Querying Multi-Role Users
+
+### Get All Roles for a User
+
+```sql
+SELECT 
+    u.id_institucional,
+    u.nombre_completo,
+    r.nombre_rol,
+    -- Conditional fields based on role
+    ie.programa,
+    iem.cargo,
+    iem.dependencia,
+    ic.empresa
+FROM usuarios u
+LEFT JOIN usuario_roles ur ON u.id_institucional = ur.id_institucional
+LEFT JOIN roles r ON ur.rol_id = r.id
+LEFT JOIN info_estudiante ie ON u.id_institucional = ie.id_institucional
+LEFT JOIN info_empleado iem ON u.id_institucional = iem.id_institucional
+LEFT JOIN info_contratista ic ON u.id_institucional = ic.id_institucional
+WHERE u.id_institucional = '80123456';
+```
+
+### Find Users with Specific Role Combination
+
+```sql
+-- Find all users who are both students AND employees
+SELECT u.id_institucional, u.nombre_completo
+FROM usuarios u
+WHERE EXISTS (
+    SELECT 1 FROM usuario_roles ur 
+    WHERE ur.id_institucional = u.id_institucional AND ur.rol_id = 1
+)
+AND EXISTS (
+    SELECT 1 FROM usuario_roles ur 
+    WHERE ur.id_institucional = u.id_institucional AND ur.rol_id = 2
+);
+```
+
+## UI Display
+
+The frontend displays all roles with their specific information:
+
+<Tabs>
+  <Tab title="Single Role">
+    ```jsx
+    // User with only Student role
+    <UserCard>
+      <h2>Juan Pérez Gómez</h2>
+      <p>ID: 80123456</p>
+      
+      <RoleBadge type="student">
+        <StudentIcon /> Estudiante
+      </RoleBadge>
+      
+      <RoleInfo>
+        <p>Programa: Ingeniería de Sistemas</p>
+      </RoleInfo>
+    </UserCard>
+    ```
+  </Tab>
+
+  <Tab title="Multiple Roles">
+    ```jsx
+    // User with Student + Employee roles
+    <UserCard>
+      <h2>María López</h2>
+      <p>ID: 80999999</p>
+      
+      <RoleContainer>
+        <RoleBadge type="student">
+          <StudentIcon /> Estudiante
+        </RoleBadge>
+        <RoleBadge type="employee">
+          <EmployeeIcon /> Empleado
+        </RoleBadge>
+      </RoleContainer>
+      
+      <RoleInfo>
+        <Section title="Estudiante">
+          <p>Programa: Derecho</p>
+        </Section>
+        <Section title="Empleado">
+          <p>Cargo: Coordinadora</p>
+          <p>Dependencia: Tesorería</p>
+        </Section>
+      </RoleInfo>
+    </UserCard>
+    ```
+  </Tab>
+
+  <Tab title="Implementation">
+    ```jsx
+    // File: src/modules/user-profile/presentation/components/UserProfile.jsx
+    export const UserProfile = ({ user }) => {
+      return (
+        <div>
+          {user.roles.map(role => (
+            <RoleSection key={role.rol_id}>
+              <h3>{role.nombre_rol}</h3>
+              
+              {role.nombre_rol === 'Estudiante' && user.info_estudiante && (
+                <p>Programa: {user.info_estudiante.programa}</p>
+              )}
+              
+              {role.nombre_rol === 'Empleado' && user.info_empleado && (
+                <>
+                  <p>Cargo: {user.info_empleado.cargo}</p>
+                  <p>Dependencia: {user.info_empleado.dependencia}</p>
+                </>
+              )}
+              
+              {role.nombre_rol === 'Contratista' && user.info_contratista && (
+                <p>Empresa: {user.info_contratista.empresa}</p>
+              )}
+            </RoleSection>
+          ))}
+        </div>
+      );
+    };
+    ```
+  </Tab>
+</Tabs>
+
+## Role Lifecycle Management
+
+<Steps>
+  <Step title="Role Assignment">
+    **Automatic**: When data inserted into role-specific table
+    
+    ```sql
+    -- Trigger automatically inserts into usuario_roles
+    INSERT INTO info_estudiante (id_institucional, programa)
+    VALUES ('80123456', 'Medicina');
+    ```
+  </Step>
+
+  <Step title="Role Active Period">
+    **Student**: Active while enrolled (1 semester minimum)
+    **Employee**: Active during employment
+    **Contractor**: Active during contract period
+  </Step>
+
+  <Step title="Role Revocation">
+    **Automatic**: When data deleted from role-specific table
+    
+    ```sql
+    -- Trigger automatically removes from usuario_roles
+    DELETE FROM info_estudiante WHERE id_institucional = '80123456';
+    ```
+  </Step>
+</Steps>
+
+## Business Rules
+
+<AccordionGroup>
+  <Accordion title="User Must Have at Least One Role">
+    **Rule**: Every user in the system must have at least one role.
+
+    **Enforcement**: Application-level validation prevents creating users without role data.
+
+    ```javascript
+    // Validation in use case
+    if (!userData.roles || userData.roles.length === 0) {
+      throw new Error('User must have at least one role');
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Roles Are Independent">
+    **Rule**: Failure tracking and blocking applies to the USER, not individual roles.
+
+    **Example**: If a student-employee gets blocked for failures, BOTH roles are blocked.
+
+    ```sql
+    -- Blocking affects the entire user
+    UPDATE usuarios SET acceso = 'bloqueado' 
+    WHERE id_institucional = '80123456';
+    
+    -- NOT role-specific blocking
+    ```
+  </Accordion>
+
+  <Accordion title="Role-Specific Data is Optional">
+    **Rule**: Some role data may be minimal (e.g., contractor only has company name).
+
+    **Rationale**: Only store information needed for access control verification.
+  </Accordion>
+</AccordionGroup>
+
+## CSV Import for Multi-Role Users
+
+During semester setup, multi-role users require data in multiple CSV files:
+
+<Tabs>
+  <Tab title="usuarios.csv">
+    ```csv
+    id_institucional,documento_identidad,nombre_completo
+    80123456,1234567890,María López
+    ```
+  </Tab>
+
+  <Tab title="estudiantes.csv">
+    ```csv
+    id_institucional,programa
+    80123456,Derecho
+    ```
+  </Tab>
+
+  <Tab title="empleados.csv">
+    ```csv
+    id_institucional,cargo,dependencia
+    80123456,Coordinadora,Tesorería
+    ```
+  </Tab>
+</Tabs>
+
+<Steps>
+  <Step title="Load Users CSV">
+    Populates `usuarios` table with base user data
+  </Step>
+  <Step title="Load Students CSV">
+    Inserts into `info_estudiante`, trigger assigns Estudiante role
+  </Step>
+  <Step title="Load Employees CSV">
+    Inserts into `info_empleado`, trigger assigns Empleado role
+  </Step>
+  <Step title="Result">
+    User 80123456 now has both Estudiante and Empleado roles
+  </Step>
+</Steps>
+
+## Admin Panel: Multi-Role View
+
+Administrators see all roles when searching for users:
+
+```jsx
+// Admin user search result
+<SearchResult>
+  <UserHeader>
+    <h3>María López</h3>
+    <p>ID: 80123456</p>
+    <StatusBadge status={user.acceso} />
+  </UserHeader>
+  
+  <RolesList>
+    <RoleChip color="blue">Estudiante - Derecho</RoleChip>
+    <RoleChip color="green">Empleado - Coordinadora, Tesorería</RoleChip>
+  </RolesList>
+  
+  <FailureInfo>
+    <p>Fallas: {user.total_fallas}/4</p>
+  </FailureInfo>
+</SearchResult>
+```
+
+## Testing Multi-Role Scenarios
+
+<CodeGroup>
+```sql Create Test User
+-- Create base user
+INSERT INTO usuarios (id_institucional, documento_identidad, nombre_completo)
+VALUES ('80TEST02', '9999999999', 'Usuario Multi-Rol');
+
+-- Add student role
+INSERT INTO info_estudiante (id_institucional, programa)
+VALUES ('80TEST02', 'Administración');
+
+-- Add employee role
+INSERT INTO info_empleado (id_institucional, cargo, dependencia)
+VALUES ('80TEST02', 'Auxiliar', 'Admisiones');
+```
+
+```sql Verify Roles
+-- Check roles were assigned
+SELECT r.nombre_rol
+FROM usuario_roles ur
+JOIN roles r ON ur.rol_id = r.id
+WHERE ur.id_institucional = '80TEST02';
+
+-- Expected result:
+-- Estudiante
+-- Empleado
+```
+
+```sql Remove One Role
+-- Remove employee role
+DELETE FROM info_empleado WHERE id_institucional = '80TEST02';
+
+-- Verify only student role remains
+SELECT r.nombre_rol
+FROM usuario_roles ur
+JOIN roles r ON ur.rol_id = r.id
+WHERE ur.id_institucional = '80TEST02';
+
+-- Expected result:
+-- Estudiante
+```
+</CodeGroup>
+
+## Performance Considerations
+
+<CardGroup cols={2}>
+  <Card title="Indexed Lookups" icon="bolt">
+    `usuario_roles` has indexes on both `id_institucional` and `rol_id` for fast queries
+  </Card>
+  <Card title="Single Query" icon="database">
+    Use JOINs to fetch all role data in one database round-trip
+  </Card>
+  <Card title="Minimal Data" icon="minimize">
+    Role-specific tables only store essential fields
+  </Card>
+  <Card title="Trigger Efficiency" icon="gauge">
+    Triggers use `ON CONFLICT DO NOTHING` to avoid unnecessary operations
+  </Card>
+</CardGroup>
+
+## Common Scenarios
+
+<AccordionGroup>
+  <Accordion title="Graduate Student Becomes Employee">
+    **Scenario**: Student graduates and is hired by UCC.
+
+    **Process**:
+    1. Student role remains active if still enrolled
+    2. HR adds employee record
+    3. Trigger automatically assigns Empleado role
+    4. User now has both roles
+
+    If student graduates:
+    1. Registrar removes from `info_estudiante`
+    2. Trigger revokes Estudiante role
+    3. User retains only Empleado role
+  </Accordion>
+
+  <Accordion title="Employee Pursues Degree">
+    **Scenario**: Current employee enrolls in a program.
+
+    **Process**:
+    1. Employee role already active
+    2. Registrar adds to `info_estudiante`
+    3. Trigger assigns Estudiante role
+    4. User now has both roles
+  </Accordion>
+
+  <Accordion title="Contractor Also Student">
+    **Scenario**: External contractor is also a student.
+
+    **Process**:
+    1. Student role assigned when enrolled
+    2. Contracts dept adds to `info_contratista`
+    3. Trigger assigns Contratista role
+    4. User has Student + Contractor roles
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Failure Tracking" icon="triangle-exclamation" href="/features/failure-tracking">
+    Learn how failures are recorded
+  </Card>
+  <Card title="Blocking System" icon="ban" href="/features/blocking-system">
+    Understand automatic blocking
+  </Card>
+  <Card title="User Workflows" icon="users" href="/user-guide/student-flow">
+    See how users interact
+  </Card>
+  <Card title="User Management" icon="users-gear" href="/admin/user-management">
+    Manage multi-role users
+  </Card>
+</CardGroup>

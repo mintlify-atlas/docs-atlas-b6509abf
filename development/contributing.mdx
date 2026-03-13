@@ -1,0 +1,524 @@
+---
+title: Contributing Guidelines
+description: How to contribute to the UCC Control de Acceso project
+---
+
+## Welcome Contributors
+
+Thank you for your interest in contributing to UCC Control de Acceso! This document provides guidelines and best practices for contributing to the project.
+
+<Note>
+  This is an internal university project. External contributions require approval from the project maintainers.
+</Note>
+
+## Getting Started
+
+<Steps>
+  <Step title="Set up your environment">
+    Follow the [Environment Setup](/development/environment-setup) guide to configure your development environment.
+  </Step>
+
+  <Step title="Understand the architecture">
+    Review the [Clean Architecture](/development/clean-architecture) and [Frontend Architecture](/development/frontend-architecture) documentation.
+  </Step>
+
+  <Step title="Check code standards">
+    Read the [Code Standards](/development/code-standards) to understand our coding conventions.
+  </Step>
+
+  <Step title="Find an issue">
+    Check the issue tracker for open issues labeled `good first issue` or `help wanted`.
+  </Step>
+</Steps>
+
+## Development Workflow
+
+### 1. Create a Branch
+
+Use descriptive branch names following this convention:
+
+```bash
+# Feature branches
+git checkout -b feature/add-role-management
+
+# Bug fix branches
+git checkout -b fix/login-validation-error
+
+# Improvement branches
+git checkout -b improve/admin-dashboard-performance
+
+# Documentation branches
+git checkout -b docs/update-api-documentation
+```
+
+### Branch Naming Convention
+
+| Type | Prefix | Example |
+|------|--------|----------|
+| New feature | `feature/` | `feature/export-pdf-reports` |
+| Bug fix | `fix/` | `fix/user-blocking-logic` |
+| Improvement | `improve/` | `improve/query-performance` |
+| Refactoring | `refactor/` | `refactor/admin-repository` |
+| Documentation | `docs/` | `docs/add-testing-guide` |
+| Testing | `test/` | `test/add-user-entity-tests` |
+
+### 2. Make Your Changes
+
+<Tabs>
+  <Tab title="Adding a Feature">
+    Follow Clean Architecture principles:
+    
+    1. **Domain Layer**: Define entities and interfaces
+    2. **Application Layer**: Create use cases
+    3. **Infrastructure Layer**: Implement repositories
+    4. **Presentation Layer**: Build UI components
+  </Tab>
+  
+  <Tab title="Fixing a Bug">
+    1. **Reproduce the bug**: Create a test case that fails
+    2. **Fix the bug**: Make minimal changes to resolve the issue
+    3. **Verify the fix**: Ensure the test passes
+    4. **Test edge cases**: Check for potential regressions
+  </Tab>
+  
+  <Tab title="Improving Code">
+    1. **Identify the problem**: Performance, readability, maintainability
+    2. **Propose solution**: Discuss approach with maintainers
+    3. **Implement changes**: Follow existing patterns
+    4. **Measure improvement**: Benchmark if performance-related
+  </Tab>
+</Tabs>
+
+### 3. Write Tests
+
+All new code should include tests:
+
+```javascript
+// Unit test for entity
+test('User should be blocked after 4 failures', () => {
+  const user = new User({ totalFallas: 4, acceso: 'bloqueado' });
+  expect(user.isBlocked()).toBe(true);
+});
+
+// Integration test for use case
+test('ValidateInstitutionalIdUseCase should validate correct ID', async () => {
+  const useCase = new ValidateInstitutionalIdUseCase(mockRepository);
+  const result = await useCase.execute('80123456');
+  expect(result.success).toBe(true);
+});
+```
+
+See the [Testing Guide](/development/testing) for more information.
+
+### 4. Follow Code Standards
+
+Ensure your code follows the project's standards:
+
+- Use **ESLint** for linting
+- Format with **Prettier**
+- Follow **Clean Architecture** principles
+- Write **descriptive variable names**
+- Add **comments for complex logic**
+- Keep **functions small and focused**
+
+See [Code Standards](/development/code-standards) for details.
+
+### 5. Commit Your Changes
+
+Write clear, descriptive commit messages:
+
+```bash
+# Good commit messages
+git commit -m "feat: add PDF export functionality to reports"
+git commit -m "fix: resolve user blocking logic for 'perdida' motive"
+git commit -m "refactor: simplify admin dashboard data fetching"
+git commit -m "docs: update environment setup instructions"
+
+# Bad commit messages
+git commit -m "update"
+git commit -m "fix bug"
+git commit -m "changes"
+```
+
+#### Commit Message Format
+
+Follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+**Types**:
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation changes
+- `style`: Code style changes (formatting, no logic change)
+- `refactor`: Code refactoring
+- `test`: Adding or updating tests
+- `chore`: Maintenance tasks
+
+**Examples**:
+
+```bash
+feat(admin): add user role management interface
+
+fix(login): correct validation for institutional IDs with leading zeros
+
+refactor(repositories): simplify Supabase query structure
+
+docs(readme): update installation instructions
+
+test(user-entity): add tests for blocking logic
+```
+
+### 6. Push Your Branch
+
+```bash
+git push origin feature/your-feature-name
+```
+
+### 7. Create a Pull Request
+
+<Steps>
+  <Step title="Open PR on GitHub">
+    Navigate to the repository and click "New Pull Request".
+  </Step>
+
+  <Step title="Fill out the PR template">
+    Provide a clear description of your changes:
+    
+    ```markdown
+    ## Description
+    Brief description of the changes
+    
+    ## Type of Change
+    - [ ] Bug fix
+    - [ ] New feature
+    - [ ] Breaking change
+    - [ ] Documentation update
+    
+    ## Testing
+    How to test the changes
+    
+    ## Screenshots (if applicable)
+    Add screenshots for UI changes
+    
+    ## Checklist
+    - [ ] Code follows project style guidelines
+    - [ ] Tests added/updated
+    - [ ] Documentation updated
+    - [ ] No breaking changes
+    ```
+  </Step>
+
+  <Step title="Request review">
+    Assign reviewers from the project maintainers.
+  </Step>
+
+  <Step title="Address feedback">
+    Make requested changes and push updates to your branch.
+  </Step>
+</Steps>
+
+## Code Review Process
+
+### What Reviewers Look For
+
+<AccordionGroup>
+  <Accordion title="Code Quality">
+    - Follows Clean Architecture principles
+    - Readable and maintainable
+    - Proper error handling
+    - No code duplication
+    - Appropriate abstractions
+  </Accordion>
+
+  <Accordion title="Functionality">
+    - Meets requirements
+    - No breaking changes
+    - Edge cases handled
+    - Works as expected
+  </Accordion>
+
+  <Accordion title="Testing">
+    - Tests included
+    - Good test coverage
+    - Tests pass
+    - No test flakiness
+  </Accordion>
+
+  <Accordion title="Documentation">
+    - Code is documented
+    - README updated if needed
+    - API documentation updated
+    - Comments for complex logic
+  </Accordion>
+
+  <Accordion title="Performance">
+    - No performance regressions
+    - Efficient algorithms
+    - Proper indexing for queries
+    - No unnecessary re-renders
+  </Accordion>
+</AccordionGroup>
+
+### Responding to Feedback
+
+- Be open to constructive criticism
+- Ask questions if feedback is unclear
+- Make requested changes promptly
+- Explain your reasoning when disagreeing
+- Thank reviewers for their time
+
+## Pull Request Checklist
+
+Before submitting a PR, ensure:
+
+- [ ] Code follows the [Code Standards](/development/code-standards)
+- [ ] All tests pass (`npm test`)
+- [ ] No linting errors (`npm run lint`)
+- [ ] Build succeeds (`npm run build`)
+- [ ] Documentation updated
+- [ ] Commit messages are descriptive
+- [ ] Branch is up to date with main
+- [ ] No merge conflicts
+- [ ] PR description is clear
+- [ ] Reviewers assigned
+
+## Coding Guidelines
+
+### Clean Architecture
+
+Follow the layered architecture:
+
+```
+Presentation → Application → Domain ← Infrastructure
+```
+
+See [Clean Architecture](/development/clean-architecture) for details.
+
+### React Components
+
+```jsx
+// Functional components with hooks
+export const UserCard = ({ user, onUpdate }) => {
+  const [loading, setLoading] = useState(false);
+
+  const handleUpdate = async () => {
+    setLoading(true);
+    await onUpdate(user.id);
+    setLoading(false);
+  };
+
+  return (
+    <div className="user-card">
+      <h3>{user.nombreCompleto}</h3>
+      <button onClick={handleUpdate} disabled={loading}>
+        {loading ? 'Actualizando...' : 'Actualizar'}
+      </button>
+    </div>
+  );
+};
+```
+
+### Database Queries
+
+```javascript
+// Good: Use repository pattern
+const users = await userRepository.findByStatus('activo');
+
+// Bad: Direct database access from components
+const { data } = await supabase.from('usuarios').select('*');
+```
+
+### Error Handling
+
+```javascript
+try {
+  const result = await someOperation();
+  return { success: true, data: result };
+} catch (error) {
+  console.error('Operation failed:', error);
+  return { success: false, error: error.message };
+}
+```
+
+## Testing Requirements
+
+### Test Coverage Goals
+
+| Layer | Minimum Coverage |
+|-------|------------------|
+| Domain entities | 90% |
+| Use cases | 85% |
+| Repositories | 80% |
+| Components | 75% |
+
+### Writing Good Tests
+
+```javascript
+// Good: Clear test name and focused assertion
+test('User.isBlocked() returns true when acceso is bloqueado', () => {
+  const user = new User({ acceso: 'bloqueado' });
+  expect(user.isBlocked()).toBe(true);
+});
+
+// Bad: Unclear test name and multiple assertions
+test('user test', () => {
+  const user = new User({ acceso: 'bloqueado', totalFallas: 4 });
+  expect(user.isBlocked()).toBe(true);
+  expect(user.totalFallas).toBe(4);
+  expect(user.getRemainingAttempts()).toBe(0);
+});
+```
+
+## Documentation
+
+### Code Comments
+
+```javascript
+/**
+ * Validates institutional ID and returns user information
+ * @param {string} idInstitucional - The institutional ID to validate
+ * @returns {Promise<{success: boolean, user?: User, error?: string}>}
+ */
+async function validateInstitutionalId(idInstitucional) {
+  // Implementation
+}
+```
+
+### README Updates
+
+Update the README when:
+- Adding new features
+- Changing installation steps
+- Modifying environment variables
+- Updating dependencies
+
+### API Documentation
+
+Document API endpoints:
+
+```javascript
+/**
+ * POST /api/auth/login
+ * Authenticates user by institutional ID
+ * 
+ * Request body:
+ * {
+ *   "id_institucional": "80123456"
+ * }
+ * 
+ * Response:
+ * {
+ *   "success": true,
+ *   "user": { ... }
+ * }
+ */
+```
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Merge Conflicts">
+    ```bash
+    # Update your branch with latest changes
+    git checkout main
+    git pull origin main
+    git checkout your-branch
+    git merge main
+    
+    # Resolve conflicts in your editor
+    # Then commit the merge
+    git add .
+    git commit -m "merge: resolve conflicts with main"
+    ```
+  </Accordion>
+
+  <Accordion title="Failed Tests">
+    ```bash
+    # Run tests locally
+    npm test
+    
+    # Run specific test file
+    npm test src/modules/login/domain/entities/User.test.js
+    
+    # Run with coverage
+    npm run test:coverage
+    ```
+  </Accordion>
+
+  <Accordion title="Linting Errors">
+    ```bash
+    # Check linting errors
+    npm run lint
+    
+    # Auto-fix issues
+    npm run lint:fix
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Communication
+
+### Where to Ask Questions
+
+- **General questions**: GitHub Discussions
+- **Bug reports**: GitHub Issues
+- **Feature requests**: GitHub Issues with `enhancement` label
+- **Security issues**: Contact maintainers directly
+
+### Issue Template
+
+When creating an issue:
+
+```markdown
+## Description
+Clear description of the issue
+
+## Steps to Reproduce
+1. Go to...
+2. Click on...
+3. See error...
+
+## Expected Behavior
+What should happen
+
+## Actual Behavior
+What actually happens
+
+## Screenshots
+If applicable
+
+## Environment
+- OS: [e.g., Windows 10]
+- Browser: [e.g., Chrome 120]
+- Node version: [e.g., 18.17.0]
+```
+
+## Recognition
+
+Contributors will be recognized in:
+- Project README
+- Release notes
+- Contributors page
+
+## License
+
+By contributing to this project, you agree that your contributions will be licensed under the same license as the project.
+
+---
+
+## Resources
+
+- [Environment Setup](/development/environment-setup)
+- [Code Standards](/development/code-standards)
+- [Testing Guide](/development/testing)
+- [Clean Architecture](/development/clean-architecture)
+- [Deployment Guide](/development/deployment)
+
+Thank you for contributing to UCC Control de Acceso!

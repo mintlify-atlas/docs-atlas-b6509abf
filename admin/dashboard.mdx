@@ -1,0 +1,224 @@
+---
+title: Admin Dashboard
+description: Understanding dashboard metrics and real-time statistics
+---
+
+# Admin Dashboard
+
+The admin dashboard provides real-time insights into system usage, user status, and security incidents.
+
+## Dashboard Metrics
+
+### User Status Overview
+
+<CardGroup cols={3}>
+  <Card title="Blocked Users" icon="ban">
+    **Color**: Red 🔴
+    
+    **Definition**: Users with `acceso = 'bloqueado'`
+    
+    **Typical Range**: 5-20 users
+    
+    **Action**: Review and unblock if appropriate
+  </Card>
+
+  <Card title="At Risk (3 Failures)" icon="triangle-exclamation">
+    **Color**: Yellow 🟡
+    
+    **Definition**: Active users with 3 failures
+    
+    **Typical Range**: 20-60 users
+    
+    **Action**: Monitor closely
+  </Card>
+
+  <Card title="Clean Record" icon="circle-check">
+    **Color**: Green 🟢
+    
+    **Definition**: Users with 0 failures
+    
+    **Typical Range**: 70-90% of users
+    
+    **Meaning**: Healthy compliance
+  </Card>
+</CardGroup>
+
+## SQL Queries Behind Metrics
+
+<CodeGroup>
+```sql Blocked Users Count
+SELECT COUNT(*) as bloqueados
+FROM usuarios
+WHERE acceso = 'bloqueado';
+```
+
+```sql Users at Risk
+SELECT COUNT(*) as en_riesgo
+FROM usuarios
+WHERE total_fallas = 3 
+  AND acceso = 'activo';
+```
+
+```sql Failure Distribution
+SELECT 
+    total_fallas,
+    COUNT(*) as cantidad,
+    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as porcentaje
+FROM usuarios
+GROUP BY total_fallas
+ORDER BY total_fallas;
+```
+
+```sql Today's Entries
+SELECT COUNT(*) as ingresos_hoy
+FROM fallas
+WHERE DATE(fecha_hora AT TIME ZONE 'America/Bogota') = CURRENT_DATE;
+```
+</CodeGroup>
+
+## Real-Time Activity Feed
+
+The dashboard displays recent failures as they occur:
+
+```jsx
+// Recent failures component
+<RecentFailures>
+  {failures.map(f => (
+    <FailureItem key={f.id}>
+      <UserID>{f.id_institucional}</UserID>
+      <UserName>{f.nombre_completo}</UserName>
+      <Reason badge={f.motivo}>{f.motivo}</Reason>
+      <Time>{formatTime(f.fecha_hora)}</Time>
+    </FailureItem>
+  ))}
+</RecentFailures>
+```
+
+**Example Output**:
+```
+FALLAS RECIENTES
+• 80123456 - Juan Pérez - Olvido - 14:30
+• 80234567 - María López - Olvido - 12:15
+• 80345678 - Carlos Ruiz - Perdida - 09:00
+```
+
+## Charts and Visualizations
+
+<Tabs>
+  <Tab title="Failure Trend">
+    **Line chart** showing failures over time:
+
+    ```sql
+    SELECT 
+        DATE(fecha_hora AT TIME ZONE 'America/Bogota') as fecha,
+        COUNT(*) as total
+    FROM fallas
+    WHERE fecha_hora >= NOW() - INTERVAL '30 days'
+    GROUP BY DATE(fecha_hora AT TIME ZONE 'America/Bogota')
+    ORDER BY fecha;
+    ```
+
+    **Use Case**: Identify patterns (e.g., Mondays have more failures)
+  </Tab>
+
+  <Tab title="Olvido vs Perdida">
+    **Pie chart** showing reason distribution:
+
+    ```sql
+    SELECT 
+        motivo,
+        COUNT(*) as cantidad
+    FROM fallas
+    WHERE fecha_hora >= NOW() - INTERVAL '30 days'
+    GROUP BY motivo;
+    ```
+
+    **Typical Ratio**: 95% olvido, 5% perdida
+  </Tab>
+
+  <Tab title="By Role">
+    **Bar chart** showing failures by user role:
+
+    ```sql
+    SELECT 
+        r.nombre_rol,
+        COUNT(f.id) as total_fallas
+    FROM fallas f
+    JOIN usuarios u ON f.id_institucional = u.id_institucional
+    JOIN usuario_roles ur ON u.id_institucional = ur.id_institucional
+    JOIN roles r ON ur.rol_id = r.id
+    WHERE f.fecha_hora >= NOW() - INTERVAL '30 days'
+    GROUP BY r.nombre_rol;
+    ```
+  </Tab>
+</Tabs>
+
+## Alert Thresholds
+
+<Warning>
+  The dashboard highlights concerning trends:
+</Warning>
+
+<AccordionGroup>
+  <Accordion title="High Blocking Rate">
+    **Trigger**: More than 3% of users blocked
+
+    **Alert**: "⚠️ Tasa de bloqueo inusualmente alta"
+
+    **Action**: Investigate if system issue or policy problem
+  </Accordion>
+
+  <Accordion title="Spike in Failures">
+    **Trigger**: 50% increase in daily failures vs. average
+
+    **Alert**: "📈 Pico de fallas detectado"
+
+    **Action**: Check if specific event (e.g., rain day, Monday)
+  </Accordion>
+
+  <Accordion title="Many Users at Risk">
+    **Trigger**: More than 5% of users with 3 failures
+
+    **Alert**: "⚠️ Muchos usuarios en riesgo de bloqueo"
+
+    **Action**: Consider communication campaign
+  </Accordion>
+</AccordionGroup>
+
+## Quick Actions
+
+Dashboard includes quick action buttons:
+
+<CardGroup cols={2}>
+  <Card title="View All Blocked">
+    Filters to show only blocked users for batch review
+  </Card>
+  <Card title="Export Today's Data">
+    One-click export of today's failures to Excel
+  </Card>
+  <Card title="Send Reminders">
+    Bulk email to users with 3 failures
+  </Card>
+  <Card title="Generate Report">
+    Quick access to report generation
+  </Card>
+</CardGroup>
+
+## Refresh Rate
+
+<Info>
+  Dashboard auto-refreshes every **30 seconds** to show real-time data.
+</Info>
+
+**Manual Refresh**: Click refresh button or press `Ctrl+R`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="User Management" href="/admin/user-management">
+    Search and manage users
+  </Card>
+  <Card title="Reports" href="/admin/reports">
+    Generate detailed reports
+  </Card>
+</CardGroup>

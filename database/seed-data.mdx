@@ -1,0 +1,578 @@
+---
+title: 'Seed Data and Testing'
+description: 'Initial data setup and test data generation'
+icon: 'seedling'
+---
+
+## Overview
+
+Seed data populates the database with initial records for development, testing, and demonstration purposes. The UCC Access Control System requires seed data for users, roles, and optionally test failures.
+
+<CardGroup cols={2}>
+  <Card title="Initial Roles" icon="users-gear">
+    Pre-populated role catalog
+  </Card>
+  <Card title="Test Users" icon="user-group">
+    Sample users for development
+  </Card>
+  <Card title="CSV Loading" icon="file-csv">
+    Bulk data import from files
+  </Card>
+  <Card title="Trigger Testing" icon="bolt">
+    Verify automatic role assignment
+  </Card>
+</CardGroup>
+
+---
+
+## Role Catalog (Pre-Seeded)
+
+The `roles` table is automatically populated when running `02_roles.sql`:
+
+```sql
+INSERT INTO roles (nombre_rol, descripcion) VALUES
+    ('Estudiante',   'Usuario matriculado en un programa académico'),
+    ('Empleado',     'Trabajador vinculado directamente a la UCC'),
+    ('Contratista',  'Proveedor externo con contrato activo');
+```
+
+**Verify:**
+```sql
+SELECT * FROM roles ORDER BY id;
+```
+
+**Expected result:**
+```
+id | nombre_rol  | descripcion
+---|-------------|------------------------------------------
+1  | Estudiante  | Usuario matriculado en un programa académico
+2  | Empleado    | Trabajador vinculado directamente a la UCC
+3  | Contratista | Proveedor externo con contrato activo
+```
+
+<Note>
+  These three roles are fixed and should not be modified during normal operations.
+</Note>
+
+---
+
+## Test Users
+
+### Sample Data for Development
+
+Create test users representing different scenarios:
+
+```sql
+-- ============================================================
+-- Test data for UCC Access Control System
+-- Includes: Students, Employees, Contractors, Multi-role users
+-- ============================================================
+
+-- Insert test users
+INSERT INTO usuarios (id_institucional, documento_identidad, nombre_completo) VALUES
+    ('80100001', '1037654321', 'Juan Diego Pérez Gómez'),
+    ('80100002', '1037654322', 'María Fernanda Rodríguez López'),
+    ('80100003', '1037654323', 'Carlos Andrés Martínez Ruiz'),
+    ('80100004', '1037654324', 'Valentina Torres Herrera'),
+    ('80100005', '1037654325', 'Andrés Felipe Sánchez Castro'),
+    ('80100006', '1037654326', 'Laura Milena Vargas Díaz'),
+    ('80100007', '1037654327', 'Santiago Gómez Moreno'),
+    ('80100008', '1037654328', 'Daniela Ospina Ramírez'),
+    ('80100009', '1037654329', 'Miguel Ángel Jiménez Ortiz'),
+    ('80100010', '1037654330', 'Isabella Ramírez Castillo');
+
+-- Insert student information (triggers assign "Estudiante" role)
+INSERT INTO info_estudiante (id_institucional, programa) VALUES
+    ('80100001', 'Ingeniería de Sistemas'),
+    ('80100002', 'Derecho'),
+    ('80100003', 'Ingeniería Industrial'),  -- Also an employee
+    ('80100004', 'Administración de Empresas'),  -- Also a contractor
+    ('80100007', 'Medicina'),
+    ('80100009', 'Contaduría Pública');
+
+-- Insert employee information (triggers assign "Empleado" role)
+INSERT INTO info_empleado (id_institucional, cargo, dependencia) VALUES
+    ('80100003', 'Auxiliar Administrativo', 'Registro Académico'),  -- Also a student
+    ('80100005', 'Docente de Planta', 'Facultad de Ingeniería'),
+    ('80100006', 'Coordinador Académico', 'Facultad de Derecho'),  -- Also a contractor
+    ('80100008', 'Secretaria', 'Vicerrectoría Académica');
+
+-- Insert contractor information (triggers assign "Contratista" role)
+INSERT INTO info_contratista (id_institucional, empresa) VALUES
+    ('80100004', 'ACME Consulting S.A.S.'),  -- Also a student
+    ('80100006', 'Legal Services Ltda.'),  -- Also an employee
+    ('80100008', 'Tech Solutions S.A.S.'),  -- Also an employee
+    ('80100010', 'Clean Services Corp.');
+
+-- Insert some test failures
+INSERT INTO fallas (id_institucional, motivo, fecha_hora) VALUES
+    ('80100001', 'olvido', NOW() - INTERVAL '5 days'),
+    ('80100001', 'olvido', NOW() - INTERVAL '3 days'),
+    ('80100002', 'olvido', NOW() - INTERVAL '1 day'),
+    ('80100007', 'perdida', NOW() - INTERVAL '2 days'),
+    ('80100007', 'olvido', NOW() - INTERVAL '1 day'),
+    ('80100007', 'olvido', NOW() - INTERVAL '12 hours');
+
+-- Insert initial semester
+INSERT INTO semestres (nombre, fecha_inicio, fecha_fin, activo) VALUES
+    ('2026-1', '2026-01-19', '2026-06-14', true);
+```
+
+**Save as:** `database/supabase/seed_test_data.sql`
+
+---
+
+### Test Data Breakdown
+
+<AccordionGroup>
+  <Accordion title="Single-Role Users (6 users)">
+    | ID | Name | Role | Details |
+    |----|------|------|----------|
+    | 80100001 | Juan Diego | Estudiante | Ingeniería de Sistemas, 2 failures |
+    | 80100002 | María Fernanda | Estudiante | Derecho, 1 failure |
+    | 80100005 | Andrés Felipe | Empleado | Docente de Planta |
+    | 80100007 | Santiago | Estudiante | Medicina, 3 failures |
+    | 80100009 | Miguel Ángel | Estudiante | Contaduría Pública |
+    | 80100010 | Isabella | Contratista | Clean Services Corp. |
+  </Accordion>
+  
+  <Accordion title="Multi-Role Users (4 users)">
+    | ID | Name | Roles | Purpose |
+    |----|------|-------|----------|
+    | 80100003 | Carlos Andrés | Estudiante + Empleado | Test dual role assignment |
+    | 80100004 | Valentina | Estudiante + Contratista | Test student-contractor combo |
+    | 80100006 | Laura Milena | Empleado + Contratista | Test employee-contractor combo |
+    | 80100008 | Daniela | Empleado + Contratista | Another employee-contractor |
+  </Accordion>
+  
+  <Accordion title="Failure Testing Scenarios">
+    | User | Failures | Status | Test Case |
+    |------|----------|--------|------------|
+    | 80100001 | 2 | activo | Below threshold |
+    | 80100002 | 1 | activo | Minimal failures |
+    | 80100007 | 3 | activo | Near threshold |
+    | Others | 0 | activo | Clean record |
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Verify Test Data
+
+### Check Users and Roles
+
+```sql
+SELECT
+    u.id_institucional,
+    u.nombre_completo,
+    u.acceso,
+    u.total_fallas,
+    STRING_AGG(r.nombre_rol, ', ' ORDER BY r.nombre_rol) AS roles
+FROM usuarios u
+LEFT JOIN usuario_roles ur ON ur.id_institucional = u.id_institucional
+LEFT JOIN roles r ON r.id = ur.rol_id
+GROUP BY u.id_institucional, u.nombre_completo, u.acceso, u.total_fallas
+ORDER BY u.id_institucional;
+```
+
+**Expected output:**
+```
+id_institucional | nombre_completo                    | acceso | total_fallas | roles
+-----------------|---------------------------------------|--------|--------------|---------------------------
+80100001         | Juan Diego Pérez Gómez                | activo | 2            | Estudiante
+80100002         | María Fernanda Rodríguez López        | activo | 1            | Estudiante
+80100003         | Carlos Andrés Martínez Ruiz           | activo | 0            | Empleado, Estudiante
+80100004         | Valentina Torres Herrera              | activo | 0            | Contratista, Estudiante
+80100005         | Andrés Felipe Sánchez Castro          | activo | 0            | Empleado
+80100006         | Laura Milena Vargas Díaz              | activo | 0            | Contratista, Empleado
+80100007         | Santiago Gómez Moreno                 | activo | 3            | Estudiante
+80100008         | Daniela Ospina Ramírez                | activo | 0            | Contratista, Empleado
+80100009         | Miguel Ángel Jiménez Ortiz            | activo | 0            | Estudiante
+80100010         | Isabella Ramírez Castillo             | activo | 0            | Contratista
+```
+
+---
+
+### Check Detailed Role Information
+
+```sql
+SELECT
+    u.id_institucional,
+    u.nombre_completo,
+    ie.programa AS estudiante_programa,
+    em.cargo AS empleado_cargo,
+    em.dependencia AS empleado_dependencia,
+    ic.empresa AS contratista_empresa
+FROM usuarios u
+LEFT JOIN info_estudiante ie ON ie.id_institucional = u.id_institucional
+LEFT JOIN info_empleado em ON em.id_institucional = u.id_institucional
+LEFT JOIN info_contratista ic ON ic.id_institucional = u.id_institucional
+ORDER BY u.id_institucional;
+```
+
+---
+
+## CSV Bulk Loading
+
+### Prepare CSV Files
+
+<Steps>
+  <Step title="Create usuarios.csv">
+    ```csv
+    id_institucional,documento_identidad,nombre_completo
+    80200001,1234567801,"Ana María López García"
+    80200002,1234567802,"Luis Fernando Castro Pérez"
+    80200003,1234567803,"Carolina Suárez Mendoza"
+    ```
+  </Step>
+  
+  <Step title="Create estudiantes.csv">
+    ```csv
+    id_institucional,programa
+    80200001,"Ingeniería Civil"
+    80200002,"Psicología"
+    ```
+  </Step>
+  
+  <Step title="Create empleados.csv">
+    ```csv
+    id_institucional,cargo,dependencia
+    80200003,"Docente Catedrático","Facultad de Ciencias"
+    ```
+  </Step>
+</Steps>
+
+---
+
+### Load CSV via Supabase Dashboard
+
+<Steps>
+  <Step title="Navigate to Table Editor">
+    1. Go to Supabase Dashboard
+    2. Click **Table Editor** in sidebar
+    3. Select the target table (e.g., `usuarios`)
+  </Step>
+  
+  <Step title="Import CSV">
+    1. Click **Insert** → **Import data from CSV**
+    2. Upload your CSV file
+    3. Map CSV columns to table columns
+    4. Click **Import**
+  </Step>
+  
+  <Step title="Verify Import">
+    ```sql
+    SELECT * FROM usuarios WHERE id_institucional LIKE '80200%';
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  When you import into `info_estudiante`, `info_empleado`, or `info_contratista`, triggers automatically assign the corresponding roles.
+</Note>
+
+---
+
+### Load CSV via Command Line
+
+```bash
+# Get connection string from Supabase dashboard
+export DB_URL="postgresql://postgres:[PASSWORD]@db.xxx.supabase.co:5432/postgres"
+
+# Load usuarios
+psql "$DB_URL" -c "\\COPY usuarios (id_institucional, documento_identidad, nombre_completo) FROM 'usuarios.csv' CSV HEADER"
+
+# Load estudiantes (triggers assign roles)
+psql "$DB_URL" -c "\\COPY info_estudiante (id_institucional, programa) FROM 'estudiantes.csv' CSV HEADER"
+
+# Load empleados (triggers assign roles)
+psql "$DB_URL" -c "\\COPY info_empleado (id_institucional, cargo, dependencia) FROM 'empleados.csv' CSV HEADER"
+```
+
+---
+
+## Generate Large Test Datasets
+
+### Python Script for Bulk Data
+
+```python
+import csv
+import random
+from faker import Faker
+
+fake = Faker('es_CO')  # Colombian Spanish locale
+
+# Generate 1000 test users
+with open('usuarios_bulk.csv', 'w', newline='', encoding='utf-8') as f:
+    writer = csv.writer(f)
+    writer.writerow(['id_institucional', 'documento_identidad', 'nombre_completo'])
+    
+    for i in range(1, 1001):
+        id_inst = f'80300{i:04d}'
+        doc_id = f'{random.randint(1000000000, 1099999999)}'
+        name = fake.name()
+        writer.writerow([id_inst, doc_id, name])
+
+print("Generated usuarios_bulk.csv with 1000 records")
+
+# Generate 600 students
+with open('estudiantes_bulk.csv', 'w', newline='', encoding='utf-8') as f:
+    writer = csv.writer(f)
+    writer.writerow(['id_institucional', 'programa'])
+    
+    programas = [
+        'Ingeniería de Sistemas', 'Derecho', 'Medicina', 'Administración',
+        'Contaduría', 'Psicología', 'Arquitectura', 'Economía'
+    ]
+    
+    for i in range(1, 601):
+        id_inst = f'80300{i:04d}'
+        programa = random.choice(programas)
+        writer.writerow([id_inst, programa])
+
+print("Generated estudiantes_bulk.csv with 600 records")
+
+# Generate 300 employees
+with open('empleados_bulk.csv', 'w', newline='', encoding='utf-8') as f:
+    writer = csv.writer(f)
+    writer.writerow(['id_institucional', 'cargo', 'dependencia'])
+    
+    cargos = ['Docente', 'Coordinador', 'Secretaria', 'Auxiliar', 'Decano']
+    dependencias = [
+        'Facultad de Ingeniería', 'Facultad de Derecho', 'Registro Académico',
+        'Biblioteca', 'Vicerrectoría', 'Recursos Humanos'
+    ]
+    
+    for i in range(601, 901):
+        id_inst = f'80300{i:04d}'
+        cargo = random.choice(cargos)
+        dependencia = random.choice(dependencias)
+        writer.writerow([id_inst, cargo, dependencia])
+
+print("Generated empleados_bulk.csv with 300 records")
+```
+
+**Install dependencies:**
+```bash
+pip install faker
+```
+
+**Run:**
+```bash
+python generate_test_data.py
+```
+
+---
+
+## Testing Automatic Blocking
+
+### Test Case: Block User at 4 Failures
+
+```sql
+-- Create test user
+INSERT INTO usuarios (id_institucional, documento_identidad, nombre_completo)
+VALUES ('TEST001', '9999999999', 'Usuario Prueba Bloqueo');
+
+-- Initial state: activo, 0 failures
+SELECT acceso, total_fallas FROM usuarios WHERE id_institucional = 'TEST001';
+-- Expected: activo, 0
+
+-- Add 3 failures (should remain active)
+INSERT INTO fallas (id_institucional, motivo) VALUES
+    ('TEST001', 'olvido'),
+    ('TEST001', 'olvido'),
+    ('TEST001', 'olvido');
+
+SELECT acceso, total_fallas FROM usuarios WHERE id_institucional = 'TEST001';
+-- Expected: activo, 3
+
+-- Add 4th failure (should auto-block)
+INSERT INTO fallas (id_institucional, motivo) VALUES ('TEST001', 'olvido');
+
+SELECT acceso, total_fallas FROM usuarios WHERE id_institucional = 'TEST001';
+-- Expected: bloqueado, 4
+```
+
+<Info>
+  The trigger `fn_actualizar_fallas()` automatically blocks the user when `total_fallas >= 4`.
+</Info>
+
+---
+
+## Testing Multi-Role Assignment
+
+### Test Case: User with Three Roles
+
+```sql
+-- Create test user
+INSERT INTO usuarios (id_institucional, documento_identidad, nombre_completo)
+VALUES ('TEST002', '9999999998', 'Usuario Multi-Rol');
+
+-- Add student info
+INSERT INTO info_estudiante (id_institucional, programa)
+VALUES ('TEST002', 'Programa de Prueba');
+
+-- Add employee info
+INSERT INTO info_empleado (id_institucional, cargo, dependencia)
+VALUES ('TEST002', 'Cargo de Prueba', 'Dependencia de Prueba');
+
+-- Add contractor info
+INSERT INTO info_contratista (id_institucional, empresa)
+VALUES ('TEST002', 'Empresa de Prueba S.A.S.');
+
+-- Verify all three roles assigned
+SELECT 
+    u.nombre_completo,
+    STRING_AGG(r.nombre_rol, ', ' ORDER BY r.nombre_rol) AS roles
+FROM usuarios u
+JOIN usuario_roles ur ON ur.id_institucional = u.id_institucional
+JOIN roles r ON r.id = ur.rol_id
+WHERE u.id_institucional = 'TEST002'
+GROUP BY u.nombre_completo;
+
+-- Expected: "Contratista, Empleado, Estudiante"
+```
+
+---
+
+## Cleanup Test Data
+
+### Remove All Test Data
+
+```sql
+-- Remove test users (cascades to all related tables)
+DELETE FROM usuarios WHERE id_institucional LIKE 'TEST%';
+DELETE FROM usuarios WHERE id_institucional LIKE '80100%';  -- Sample data
+DELETE FROM usuarios WHERE id_institucional LIKE '80200%';  -- CSV imports
+DELETE FROM usuarios WHERE id_institucional LIKE '80300%';  -- Bulk data
+
+-- Reset semester
+DELETE FROM semestres;
+```
+
+<Warning>
+  This will delete all test users and their associated data (roles, failures, etc.).
+</Warning>
+
+---
+
+### Selective Cleanup
+
+```sql
+-- Remove only failures (keeps users)
+DELETE FROM fallas WHERE id_institucional LIKE 'TEST%';
+
+-- Remove only student info (revokes Estudiante role via trigger)
+DELETE FROM info_estudiante WHERE id_institucional LIKE 'TEST%';
+
+-- Remove only blocked users
+DELETE FROM usuarios WHERE acceso = 'bloqueado';
+```
+
+---
+
+## Seed Data Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Prefixes for Test Data">
+    Use distinguishable ID prefixes:
+    - `801xxxxx` - Manual test users
+    - `802xxxxx` - CSV imports
+    - `803xxxxx` - Bulk generated data
+    - `TEST*` - Temporary test users
+    
+    Makes cleanup easier.
+  </Accordion>
+  
+  <Accordion title="Include Edge Cases">
+    Test data should include:
+    - Users with 0 failures
+    - Users near blocking threshold (3 failures)
+    - Users already blocked (4+ failures)
+    - Single-role users
+    - Multi-role users
+    - Users with no roles
+  </Accordion>
+  
+  <Accordion title="Keep Seed Scripts in Version Control">
+    ```bash
+    git add database/supabase/seed_test_data.sql
+    git commit -m "Add seed data for testing"
+    ```
+    
+    Team members can reproduce the same test environment.
+  </Accordion>
+  
+  <Accordion title="Separate Production Seed from Test Seed">
+    - `seed_production.sql` - Minimal data for production (roles only)
+    - `seed_test_data.sql` - Development and testing data
+    - `seed_bulk_data.sql` - Large dataset for performance testing
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Production Data Loading
+
+For production deployment:
+
+<Steps>
+  <Step title="Load Minimal Initial Data">
+    Only load the role catalog (already done in `02_roles.sql`).
+  </Step>
+  
+  <Step title="Prepare Real User Data">
+    Export from institutional systems:
+    - Student list from academic registration system
+    - Employee list from HR system
+    - Contractor list from procurement system
+  </Step>
+  
+  <Step title="Validate CSV Format">
+    Ensure CSVs match table schema:
+    ```
+    usuarios: id_institucional, documento_identidad, nombre_completo
+    info_estudiante: id_institucional, programa
+    info_empleado: id_institucional, cargo, dependencia
+    info_contratista: id_institucional, empresa
+    ```
+  </Step>
+  
+  <Step title="Load in Correct Order">
+    1. `usuarios.csv`
+    2. `estudiantes.csv` (triggers assign roles)
+    3. `empleados.csv` (triggers assign roles)
+    4. `contratistas.csv` (triggers assign roles)
+  </Step>
+  
+  <Step title="Verify Data Integrity">
+    ```sql
+    -- Check all users have at least one role
+    SELECT u.id_institucional, u.nombre_completo
+    FROM usuarios u
+    LEFT JOIN usuario_roles ur ON ur.id_institucional = u.id_institucional
+    WHERE ur.id IS NULL;
+    
+    -- Should return empty result
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Test Triggers" icon="flask" href="/database/triggers">
+    Verify automatic role assignment
+  </Card>
+  <Card title="Backup Data" icon="floppy-disk" href="/database/installation">
+    Create database backups
+  </Card>
+  <Card title="Monitor Usage" icon="chart-line" href="/database/tables">
+    Track database performance
+  </Card>
+  <Card title="Manage Semesters" icon="calendar" href="/database/migrations">
+    Handle semester transitions
+  </Card>
+</CardGroup>

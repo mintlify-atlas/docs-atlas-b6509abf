@@ -1,0 +1,501 @@
+---
+title: Failure Tracking System
+description: Recording and managing user incidents when TIC is not presented
+---
+
+# Failure Tracking System
+
+The UCC Control de Acceso system tracks incidents when users arrive at campus without their **TIC** (Tarjeta de Identificación Cooperativista - Cooperative ID Card).
+
+## What is a "Failure"?
+
+A "failure" (falla) is recorded when a user needs contingent entry because they don't have their physical ID card.
+
+<Info>
+  The term "failure" doesn't imply wrongdoing - it's simply an incident that requires documentation for security and accountability.
+</Info>
+
+## Failure Types
+
+The system recognizes two types of incidents:
+
+<Tabs>
+  <Tab title="Olvido (Forgot)">
+    **Description**: User forgot to bring their TIC card
+
+    **System Behavior**:
+    - Increments failure counter
+    - Allows entry (up to 3 times)
+    - Blocks automatically on 4th occurrence
+    - Most common scenario
+
+    **User Experience**:
+    ```
+    1st time: ✅ Entry granted - 1/4 failures
+    2nd time: ✅ Entry granted - 2/4 failures
+    3rd time: ⚠️ Entry granted - 3/4 failures (WARNING)
+    4th time: ❌ BLOCKED - Must visit administration
+    ```
+  </Tab>
+
+  <Tab title="Perdida (Lost)">
+    **Description**: User lost their TIC card
+
+    **System Behavior**:
+    - Increments failure counter
+    - **Immediate blocking** (regardless of previous count)
+    - Requires admin intervention to unblock
+    - User must get replacement card
+
+    **User Experience**:
+    ```
+    Any time: ❌ BLOCKED IMMEDIATELY
+    Message: "TIC reportada como PERDIDA"
+    Action: Visit administration for replacement
+    ```
+
+    <Warning>
+      Lost cards pose a security risk (someone else could use it), justifying immediate blocking.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Database Schema
+
+Failures are stored in the `fallas` table:
+
+```sql
+CREATE TABLE fallas (
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_institucional VARCHAR(20)  NOT NULL
+                     REFERENCES usuarios(id_institucional) ON DELETE CASCADE,
+    fecha_hora       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    motivo           VARCHAR(10)  NOT NULL
+                     CHECK (motivo IN ('olvido', 'perdida'))
+);
+```
+
+**Key Fields**:
+- `id_institucional`: Links to user
+- `fecha_hora`: Exact timestamp with timezone
+- `motivo`: Either 'olvido' or 'perdida'
+
+## Recording a Failure
+
+Failures are recorded through the user interface:
+
+<Steps>
+  <Step title="User Selects Reason">
+    After login, user (or security guard) clicks "Registrar Ingreso Sin Carnet" and selects:
+    - **Olvido** (Forgot card)
+    - **Perdida** (Lost card)
+  </Step>
+
+  <Step title="System Inserts Record">
+    ```sql
+    INSERT INTO fallas (id_institucional, motivo)
+    VALUES ('80123456', 'olvido');
+    ```
+  </Step>
+
+  <Step title="Trigger Executes">
+    The `trg_fallas_insert` trigger fires automatically:
+    1. Counts total failures for user
+    2. Updates `total_fallas` in `usuarios` table
+    3. Checks if blocking threshold reached
+    4. Updates `acceso` status if needed
+  </Step>
+
+  <Step title="System Responds">
+    Displays result to user:
+    - **Entry permitted** with warning (for olvido < 4)
+    - **Blocked** message (for olvido = 4 or any perdida)
+  </Step>
+</Steps>
+
+## Automatic Counter Update
+
+The failure counter is maintained automatically via database trigger:
+
+```sql
+-- File: 07_fallas.sql
+CREATE OR REPLACE FUNCTION fn_actualizar_fallas()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_id_inst   VARCHAR(20);
+    v_total     INT;
+BEGIN
+    -- Get affected user's ID
+    v_id_inst := CASE WHEN TG_OP = 'DELETE' THEN OLD.id_institucional
+                                             ELSE NEW.id_institucional END;
+
+    -- Count current failures
+    SELECT COUNT(*) INTO v_total
+    FROM fallas
+    WHERE id_institucional = v_id_inst;
+
+    -- Update counter and block if threshold reached
+    UPDATE usuarios
+    SET total_fallas = v_total,
+        acceso       = CASE WHEN v_total >= 4 THEN 'bloqueado' ELSE acceso END
+    WHERE id_institucional = v_id_inst;
+
+    RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER trg_fallas_insert
+    AFTER INSERT ON fallas
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_actualizar_fallas();
+```
+
+### Trigger Features
+
+<AccordionGroup>
+  <Accordion title="Automatic Counting">
+    The trigger **counts** failures instead of incrementing:
+    
+    ```sql
+    SELECT COUNT(*) FROM fallas WHERE id_institucional = v_id_inst;
+    ```
+    
+    **Why?** This ensures accuracy even if records are deleted or inserted out of order.
+  </Accordion>
+
+  <Accordion title="Conditional Blocking">
+    Blocking logic is embedded in the UPDATE:
+    
+    ```sql
+    acceso = CASE WHEN v_total >= 4 THEN 'bloqueado' ELSE acceso END
+    ```
+    
+    **Note**: This only blocks at 4+ failures, it doesn't unblock automatically.
+  </Accordion>
+
+  <Accordion title="Deletion Handling">
+    The trigger fires on DELETE too:
+    
+    ```sql
+    CREATE TRIGGER trg_fallas_delete
+        AFTER DELETE ON fallas
+        FOR EACH ROW
+        EXECUTE FUNCTION fn_actualizar_fallas();
+    ```
+    
+    **Use case**: If admin corrects a wrongly recorded failure, count recalculates.
+  </Accordion>
+</AccordionGroup>
+
+## Failure Progression
+
+Let's trace a user's journey through the failure system:
+
+<CodeGroup>
+```sql Initial State
+-- User starts with clean record
+SELECT id_institucional, total_fallas, acceso
+FROM usuarios
+WHERE id_institucional = '80123456';
+
+-- Result:
+-- 80123456 | 0 | activo
+```
+
+```sql First Failure
+-- User forgets card for first time
+INSERT INTO fallas (id_institucional, motivo)
+VALUES ('80123456', 'olvido');
+
+-- After trigger:
+SELECT total_fallas, acceso FROM usuarios WHERE id_institucional = '80123456';
+-- Result: 1 | activo
+-- Message: "✅ Ingreso permitido - Fallas: 1/4"
+```
+
+```sql Second Failure
+INSERT INTO fallas (id_institucional, motivo)
+VALUES ('80123456', 'olvido');
+
+-- After trigger:
+-- Result: 2 | activo
+-- Message: "✅ Ingreso permitido - Fallas: 2/4"
+```
+
+```sql Third Failure (Warning)
+INSERT INTO fallas (id_institucional, motivo)
+VALUES ('80123456', 'olvido');
+
+-- After trigger:
+-- Result: 3 | activo
+-- Message: "⚠️ ADVERTENCIA: Fallas: 3/4 - Próxima falla causará bloqueo"
+```
+
+```sql Fourth Failure (Blocked)
+INSERT INTO fallas (id_institucional, motivo)
+VALUES ('80123456', 'olvido');
+
+-- After trigger:
+-- Result: 4 | bloqueado
+-- Message: "❌ USUARIO BLOQUEADO - Diríjase a la Dirección"
+```
+</CodeGroup>
+
+## Failure History Query
+
+Administrators can view complete failure history:
+
+```sql
+-- Get failure history for a user
+SELECT 
+    f.id,
+    f.fecha_hora,
+    f.motivo,
+    f.fecha_hora AT TIME ZONE 'America/Bogota' as fecha_local
+FROM fallas f
+WHERE f.id_institucional = '80123456'
+ORDER BY f.fecha_hora DESC;
+
+-- Example result:
+-- id | fecha_hora                    | motivo  | fecha_local
+-- 45 | 2026-03-13 14:30:00-05       | olvido  | 2026-03-13 14:30:00
+-- 44 | 2026-03-10 08:15:00-05       | olvido  | 2026-03-10 08:15:00
+-- 43 | 2026-03-05 09:00:00-05       | olvido  | 2026-03-05 09:00:00
+```
+
+## UI Components
+
+### Failure Counter Display
+
+```jsx
+// File: src/modules/user-profile/presentation/components/FailureCounter.jsx
+export const FailureCounter = ({ count }) => {
+  const getColor = () => {
+    if (count >= 3) return 'text-red-600';
+    if (count >= 2) return 'text-orange-500';
+    if (count >= 1) return 'text-yellow-600';
+    return 'text-green-600';
+  };
+
+  const getMessage = () => {
+    if (count === 0) return '✅ Sin fallas registradas';
+    if (count === 3) return '⚠️ RIESGO: 3/4 fallas';
+    return `Fallas: ${count}/4`;
+  };
+
+  return (
+    <div className={`flex items-center gap-2 ${getColor()}`}>
+      <WarningIcon visible={count >= 3} />
+      <span className="font-bold">{getMessage()}</span>
+    </div>
+  );
+};
+```
+
+### Reason Selector
+
+```jsx
+// File: src/modules/user-profile/presentation/components/ReasonSelector.jsx
+export const ReasonSelector = ({ onSelect }) => {
+  return (
+    <div className="grid grid-cols-2 gap-4">
+      <button 
+        onClick={() => onSelect('olvido')}
+        className="bg-yellow-500 hover:bg-yellow-600 p-6 rounded-lg"
+      >
+        <span className="text-4xl">🤦‍♂️</span>
+        <h3 className="font-bold mt-2">OLVIDO</h3>
+        <p className="text-sm">Olvidé mi carnet</p>
+      </button>
+
+      <button 
+        onClick={() => onSelect('perdida')}
+        className="bg-red-500 hover:bg-red-600 p-6 rounded-lg"
+      >
+        <span className="text-4xl">😰</span>
+        <h3 className="font-bold mt-2">PERDIDA</h3>
+        <p className="text-sm">Perdí mi carnet</p>
+      </button>
+    </div>
+  );
+};
+```
+
+## Business Rules
+
+<AccordionGroup>
+  <Accordion title="4-Strike Rule (Olvido)">
+    **Rule**: Users are allowed 3 "olvido" incidents before automatic blocking.
+
+    **Rationale**: Provides grace for occasional forgetfulness while preventing abuse.
+
+    **Implementation**: Trigger checks `v_total >= 4` and sets `acceso = 'bloqueado'`
+  </Accordion>
+
+  <Accordion title="Immediate Block (Perdida)">
+    **Rule**: "Perdida" causes immediate blocking regardless of previous count.
+
+    **Rationale**: Lost cards are a security risk - someone else could use it.
+
+    **Implementation**: Application logic checks motivo and blocks before insert.
+  </Accordion>
+
+  <Accordion title="Permanent Record">
+    **Rule**: Failure records are permanent and cannot be deleted by regular users.
+
+    **Rationale**: Maintains audit trail and accountability.
+
+    **Implementation**: RLS policies prevent DELETE except by admins.
+  </Accordion>
+
+  <Accordion title="Semester Reset">
+    **Rule**: Failure counters reset at the start of each semester.
+
+    **Rationale**: Fresh start for new academic period.
+
+    **Implementation**: Semester transition process clears `fallas` table.
+  </Accordion>
+</AccordionGroup>
+
+## Admin Correction
+
+Admins can correct wrongly recorded failures:
+
+```sql
+-- Delete incorrect failure record
+DELETE FROM fallas WHERE id = 45;
+
+-- Trigger automatically recalculates:
+-- 1. Counts remaining failures
+-- 2. Updates total_fallas in usuarios
+-- 3. May unblock user if count drops below 4
+```
+
+<Warning>
+  Deleting a failure record that caused blocking may NOT automatically unblock the user. Admins should use the explicit unblock function.
+</Warning>
+
+## Reporting and Analytics
+
+### Daily Failure Summary
+
+```sql
+-- Failures recorded today
+SELECT 
+    COUNT(*) as total_failures,
+    COUNT(*) FILTER (WHERE motivo = 'olvido') as olvidos,
+    COUNT(*) FILTER (WHERE motivo = 'perdida') as perdidas
+FROM fallas
+WHERE DATE(fecha_hora AT TIME ZONE 'America/Bogota') = CURRENT_DATE;
+```
+
+### Users at Risk (3 Failures)
+
+```sql
+-- Users with 3 failures (one away from blocking)
+SELECT 
+    u.id_institucional,
+    u.nombre_completo,
+    u.total_fallas,
+    MAX(f.fecha_hora) as ultima_falla
+FROM usuarios u
+JOIN fallas f ON u.id_institucional = f.id_institucional
+WHERE u.total_fallas = 3 AND u.acceso = 'activo'
+GROUP BY u.id_institucional, u.nombre_completo, u.total_fallas
+ORDER BY ultima_falla DESC;
+```
+
+### Failure Trends
+
+```sql
+-- Failures per day for last 30 days
+SELECT 
+    DATE(fecha_hora AT TIME ZONE 'America/Bogota') as fecha,
+    COUNT(*) as total
+FROM fallas
+WHERE fecha_hora >= NOW() - INTERVAL '30 days'
+GROUP BY DATE(fecha_hora AT TIME ZONE 'America/Bogota')
+ORDER BY fecha DESC;
+```
+
+## Testing Scenarios
+
+<Tabs>
+  <Tab title="Test Olvido Progression">
+    ```sql
+    -- Create test user
+    INSERT INTO usuarios (id_institucional, documento_identidad, nombre_completo)
+    VALUES ('80FAIL01', '1111111111', 'Usuario Prueba Fallas');
+
+    -- Test 1st failure (should allow)
+    INSERT INTO fallas (id_institucional, motivo) VALUES ('80FAIL01', 'olvido');
+    SELECT acceso, total_fallas FROM usuarios WHERE id_institucional = '80FAIL01';
+    -- Expected: activo | 1
+
+    -- Test 2nd failure (should allow)
+    INSERT INTO fallas (id_institucional, motivo) VALUES ('80FAIL01', 'olvido');
+    SELECT acceso, total_fallas FROM usuarios WHERE id_institucional = '80FAIL01';
+    -- Expected: activo | 2
+
+    -- Test 3rd failure (should allow with warning)
+    INSERT INTO fallas (id_institucional, motivo) VALUES ('80FAIL01', 'olvido');
+    SELECT acceso, total_fallas FROM usuarios WHERE id_institucional = '80FAIL01';
+    -- Expected: activo | 3
+
+    -- Test 4th failure (should block)
+    INSERT INTO fallas (id_institucional, motivo) VALUES ('80FAIL01', 'olvido');
+    SELECT acceso, total_fallas FROM usuarios WHERE id_institucional = '80FAIL01';
+    -- Expected: bloqueado | 4
+    ```
+  </Tab>
+
+  <Tab title="Test Perdida Immediate Block">
+    ```sql
+    -- Create test user with 0 failures
+    INSERT INTO usuarios (id_institucional, documento_identidad, nombre_completo)
+    VALUES ('80LOST01', '2222222222', 'Usuario Prueba Perdida');
+
+    -- Record lost card (should block immediately)
+    INSERT INTO fallas (id_institucional, motivo) VALUES ('80LOST01', 'perdida');
+    
+    SELECT acceso, total_fallas FROM usuarios WHERE id_institucional = '80LOST01';
+    -- Expected: bloqueado | 1
+    ```
+  </Tab>
+
+  <Tab title="Test Failure Deletion">
+    ```sql
+    -- User with 2 failures
+    INSERT INTO fallas (id_institucional, motivo) VALUES ('80TEST01', 'olvido');
+    INSERT INTO fallas (id_institucional, motivo) VALUES ('80TEST01', 'olvido');
+    
+    SELECT total_fallas FROM usuarios WHERE id_institucional = '80TEST01';
+    -- Expected: 2
+
+    -- Admin deletes one incorrect failure
+    DELETE FROM fallas WHERE id_institucional = '80TEST01' LIMIT 1;
+
+    SELECT total_fallas FROM usuarios WHERE id_institucional = '80TEST01';
+    -- Expected: 1 (automatically recalculated by trigger)
+    ```
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Blocking System" icon="ban" href="/features/blocking-system">
+    Learn about automatic blocking
+  </Card>
+  <Card title="User Workflows" icon="users" href="/user-guide/student-flow">
+    See complete user flows
+  </Card>
+  <Card title="Admin Reports" icon="chart-line" href="/admin/reports">
+    Generate failure reports
+  </Card>
+  <Card title="Reporting TIC Issues" icon="id-card" href="/user-guide/reporting-tic">
+    How to report lost/stolen cards
+  </Card>
+</CardGroup>
