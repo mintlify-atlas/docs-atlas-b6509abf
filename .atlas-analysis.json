@@ -1,0 +1,154 @@
+{
+  "projectType": "saas",
+  "projectName": "UCC Control de Acceso",
+  "projectDescription": "Sistema web de control de acceso para gestionar el ingreso contingente de usuarios sin carnet en la Universidad Cooperativa de Colombia",
+  "theme": "linden",
+  "primaryColor": "#003DA5",
+  "lightColor": "#4A7BBA",
+  "darkColor": "#002870",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/user-authentication",
+              "features/multi-role-system",
+              "features/failure-tracking",
+              "features/blocking-system"
+            ]
+          },
+          {
+            "group": "User Guide",
+            "pages": [
+              "user-guide/student-flow",
+              "user-guide/employee-flow",
+              "user-guide/contractor-flow",
+              "user-guide/reporting-tic"
+            ]
+          },
+          {
+            "group": "Admin Panel",
+            "pages": [
+              "admin/overview",
+              "admin/dashboard",
+              "admin/user-management",
+              "admin/reports",
+              "admin/semester-management"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Database",
+        "groups": [
+          {
+            "group": "Schema",
+            "pages": [
+              "database/overview",
+              "database/tables",
+              "database/relationships",
+              "database/triggers"
+            ]
+          },
+          {
+            "group": "Setup",
+            "pages": [
+              "database/installation",
+              "database/migrations",
+              "database/seed-data"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Authentication",
+            "pages": [
+              "api/auth/login",
+              "api/auth/validate-user"
+            ]
+          },
+          {
+            "group": "Users",
+            "pages": [
+              "api/users/get-profile",
+              "api/users/get-roles",
+              "api/users/report-failure"
+            ]
+          },
+          {
+            "group": "Admin",
+            "pages": [
+              "api/admin/dashboard",
+              "api/admin/unblock-user",
+              "api/admin/export-reports",
+              "api/admin/bulk-upload"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Setup",
+            "pages": [
+              "development/environment-setup",
+              "development/running-locally",
+              "development/testing"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "development/frontend-architecture",
+              "development/backend-architecture",
+              "development/clean-architecture"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
+              "development/contributing",
+              "development/code-standards",
+              "development/deployment"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "ID-based authentication for institutional access control",
+    "Multi-role support (Student, Employee, Contractor)",
+    "Automatic blocking system based on failure accumulation",
+    "Real-time admin dashboard with statistics and metrics",
+    "Excel report generation and CSV bulk data upload",
+    "Supabase/PostgreSQL database with RLS policies",
+    "Clean architecture with domain-driven design",
+    "Corporate UCC branding with institutional colors"
+  ],
+  "publicApiSurface": [
+    "POST /api/auth/login - Validate institutional ID",
+    "GET /api/usuarios/:id - Get user profile with roles",
+    "POST /api/registro-falla - Report TIC failure (olvido/perdida/robo)",
+    "GET /api/admin/dashboard - Get admin dashboard statistics",
+    "POST /api/admin/desbloquear - Unblock user",
+    "GET /api/admin/reportes/:tipo - Export Excel reports",
+    "POST /api/admin/carga-csv - Bulk upload CSV data",
+    "GET /api/admin/usuarios - List all users with filtering"
+  ]
+}
